@@ -7,9 +7,68 @@ import shutil
 import logging
 from vampyr.osd import OSD
 from vampyr.decoder import decode_osdmap, decode_inc_osdmap, decode_osd_super
-from vampyr.cephdatatypes import ByteHandler
+from vampyr.kv import RDBKV
 # import functools
 # print = functools.partial(print, flush=True)
+
+
+def usage():
+    print("""
+Vampyr (short for Vampyroteuthis infernalis == vampire squid from hell)
+is a utility to analyze a Ceph OSD when it is offline.
+
+It may be used to extract and restore data from an OSD
+or to analyze metadata that can be found in the KV store
+or in other places.
+
+It is not necessary to install Ceph to run Vampyr.
+
+Prerequesites:
+--------------
+Vampyr needs the tool "ldb" from RocksDB to analyze the KV store.
+
+
+Usage:
+------
+vampyr.py --help
+vampyr.py --image <OSD> [OPTIONS]
+
+<OSD>         Path to a file containing an image of an unencrypted OSD.
+              If the start of the OSD is not at the start of the image
+              use --offset.
+
+OPTIONS:
+--offset      Offset of the OSD within the file. Dec or hex.
+--verbose     More output.
+--logging [INFO|DEBUG]
+              Turn on info or debug logging.
+
+--ldb <path>  The path of the ldb executable. If not given,
+              ldb must be in PATH.
+
+--clear       Clear directories before extracting data to them.
+
+--scan <DIR>  Scans image for known data structures and extracts
+              them to the directory.
+              Options listed below will be ignored.
+
+--bslabel     Print Bluestore label/superblock information.
+--bfssuper    Print information about the BlueFS superblock.
+--bfstx       Print information about the BlueFS transaction log.
+--xbfs <DIR>  Extract BlueFS content to this directory.
+--lspes       List physical extents, allocated and non-allocated.
+--xpes <DIR>  Extract unallocated physical extents to this directory.
+--lsobjects   List objects. (See also --objfilter.)
+--decobjects  Print decoded objects. (See also --objfilter.)
+--objfilter   A regex to filter object names. Only objects matching
+              this regex will be extracted/printed/...
+--lsbitmap    Show the Bitmap from KV store.
+--xbitmap     Extract all blocks that are marked as unallocated in
+              KV store bitmap.
+--xall <DIR>  Extract all matching objects to this directory.
+              This includes slack space and metadata.
+--lspgs       List PG information
+        """)
 
 
 def main():
@@ -34,7 +93,8 @@ def main():
                                     "lspgs",
                                     "scan=",
                                     "offset=",
-                                    "logging="])
+                                    "logging=",
+                                    "ldb="])
     except getopt.GetoptError as exception:
         print(str(exception))
         sys.exit(1)
@@ -52,7 +112,7 @@ def main():
         if opt in ("-v", "--verbose"):
             verbose = True
         elif opt in ("-h", "--help"):
-            print("help0")
+            usage()
             sys.exit(0)
         elif opt in ("-i", "--image"):
             osdpath = arg
@@ -102,8 +162,11 @@ def main():
             actions_o.append("scan")
             scandir = arg
 
+        elif opt in ("--ldb"):
+            RDBKV.ldb = arg
+
         else:
-            print("help1: %s" % opt)
+            usage()
             sys.exit(1)
     if len(actions_o) > 0:
         actions = actions_o
@@ -114,7 +177,7 @@ def main():
         if loglevel == "DEBUG":
             logging.basicConfig(level=logging.DEBUG)
     elif loglevel:
-        print("help2: %s" % loglevel)
+        usage()
         sys.exit(1)
 
     logging.debug(actions)
