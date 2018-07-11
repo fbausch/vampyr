@@ -155,6 +155,32 @@ class CephCrush(CephDataType):
         return ret
 
 
+class CephOSDState(CephInteger):
+    flags = {0x1: "EXISTS",
+             0x2: "UP",
+             0x4: "AUTOOUT",
+             0x8: "NEW",
+             0x10: "FULL",
+             0x20: "NEARFULL",
+             0x40: "BACKFILLFULL",
+             0x80: "DESTROYED",
+             0x100: "NOUP",
+             0x200: "NODOWN",
+             0x400: "NOIN",
+             0x800: "NOOUT"}
+
+    def __init__(self, handle):
+        super().__init__(handle, 4)
+
+    def __str__(self):
+        keys = sorted(CephOSDState.flags.keys())
+        hints = []
+        for k in keys:
+            if k & self.value == k:
+                hints.append(CephOSDState.flags[k])
+        return "0x%04x (%s)" % (self.value, ", ".join(hints))
+
+
 def decode_osdmap(onode, read):
     if onode:
         o = ByteHandler(onode.extract_raw(read))
@@ -166,9 +192,9 @@ def decode_osdmap(onode, read):
     # start = o.tell()
     h['header'] = CephBlockHeader(o)
     assert(h['header'].blength < 0x100000)
-    h['header2'] = CephBlockHeader(o)
-    assert(h['header2'].blength < 0x100000)
-    v = h['header2'].v
+    h['client_usable_header'] = CephBlockHeader(o)
+    assert(h['client_usable_header'].blength < 0x100000)
+    v = h['client_usable_header'].v
     h['fsid'] = CephUUID(o)
     h['epoch'] = CephInteger(o, 4)
     h['created'] = CephUTime(o)
@@ -182,7 +208,7 @@ def decode_osdmap(onode, read):
     h['pool_max'] = CephInteger(o, 4)
     h['flags'] = CephInteger(o, 4)
     h['max_osd'] = CephInteger(o, 4)
-    h['osd_state'] = CephList(o, CephInteger, 4)
+    h['osd_state'] = CephList(o, CephOSDState, None)
     h['osd_weight'] = CephList(o, CephInteger, 4)
     h['client_addr'] = CephList(o, CephEntityAddr, None)
     h['pg_temp'] = CephDict(o, CephPG, None, CephIntegerList, 4)
@@ -216,12 +242,12 @@ def decode_osdmap(onode, read):
         h['new_purged_snaps'] = CephDict(
             o, CephInteger, 8, CephInteger, 4)  # TODO
 
-    assert(o.tell() == h['header2'].end_offset)
+    assert(o.tell() == h['client_usable_header'].end_offset)
 
-    h['header3'] = CephBlockHeader(o)
-    assert(h['header3'].blength < 0x100000)
-    v = h['header3'].v
-    assert(h['header3'].c == 1)
+    h['osd_only_header'] = CephBlockHeader(o)
+    assert(h['osd_only_header'].blength < 0x100000)
+    v = h['osd_only_header'].v
+    assert(h['osd_only_header'].c == 1)
     h['hb_back_addr'] = CephList(o, CephEntityAddr, None)
     h['osdinfo'] = CephList(o, CephOSDInfo, None)
     h['blacklickt_map'] = CephDict(o, CephEntityAddr,
@@ -243,7 +269,7 @@ def decode_osdmap(onode, read):
     if v >= 6:
         h['removed_snaps_queue'] = CephDict(
             o, CephInteger, 8, CephInteger, 4)  # TODO
-    assert(o.tell() == h['header3'].end_offset)
+    assert(o.tell() == h['osd_only_header'].end_offset)
 
     h['crc'] = CephInteger(o, 4)
     assert(o.tell() == h['header'].end_offset)
@@ -330,10 +356,10 @@ def decode_inc_osdmap(onode, read):
             o, CephInteger, 8, CephString, None)  # TODO
     assert(o.tell() == h['client_usable_header'].end_offset)
 
-    h['client_unusable_header'] = CephBlockHeader(o)
-    assert(h['client_unusable_header'].blength < 0x100000)
-    o.seek(h['client_unusable_header'].end_offset)  # TODO
-    assert(o.tell() == h['client_unusable_header'].end_offset)
+    h['osd_only_header'] = CephBlockHeader(o)
+    assert(h['osd_only_header'].blength < 0x100000)
+    o.seek(h['osd_only_header'].end_offset)  # TODO
+    assert(o.tell() == h['osd_only_header'].end_offset)
     h['inc_crc'] = CephInteger(o, 4)
     h['full_crc'] = CephInteger(o, 4)
     assert(o.tell() == h['header'].end_offset)
