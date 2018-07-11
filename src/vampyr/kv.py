@@ -15,6 +15,8 @@ import re
 
 
 class RDBKV(object):
+    ldb = None
+
     def __init__(self, workingdir):
         self.wdir = workingdir
         self.datasets = []
@@ -22,7 +24,11 @@ class RDBKV(object):
 
         # command = ['sst_dump', '--file=%s' % self.wdir,
         #            '--command=scan', '--output_hex']
-        command = ['ldb', 'idump', '--db=%s' % self.wdir,
+        if RDBKV.ldb is None:
+            RDBKV.ldb = 'ldb'
+        else:
+            RDBKV.ldb = os.path.join(".", RDBKV.ldb)
+        command = [RDBKV.ldb, 'idump', '--db=%s' % self.wdir,
                    '--hex']
 
         proc = subprocess.Popen(command, stdout=subprocess.PIPE,
