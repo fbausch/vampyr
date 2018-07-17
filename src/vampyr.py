@@ -23,9 +23,14 @@ or in other places.
 
 It is not necessary to install Ceph to run Vampyr.
 
+* https://github.com/fbausch/vampyr
+* https://github.com/fbausch/vampyr/wiki
+
 Prerequesites:
 --------------
-Vampyr needs the tool "ldb" from RocksDB to analyze the KV store.
+* Python 3
+* The OSD uses Bluestore with RocksDB KV backend.
+* Vampyr needs the tool "ldb" from RocksDB to analyze the KV store.
 
 
 Usage:
@@ -270,7 +275,7 @@ def main():
             osd.bluefs.extract_state(bfsextract_dest)
 
         if "lspes" in actions:
-            osd.pextents_pretty_print(osdlength)
+            osd.pextents_pretty_print()
         if "xpes" in actions:
             osd.pextents_extract_unallocated(extractpes)
 
