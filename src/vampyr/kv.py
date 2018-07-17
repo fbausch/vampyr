@@ -415,7 +415,7 @@ class PrefixHandlerC(GenericPrefixHandler):
         print("PG Metadata:")
         print("------------")
         for m in sorted(self.cnode_map.items(), key=lambda x: x[0]):
-            print("%16s: %s" % (m[0], str(m[1])))
+            print("%16s: %s" % (str(m[0]), str(m[1])))
         print("")
 
 
@@ -1051,7 +1051,7 @@ class KVCNode(CephDataType):
         super().__init__(start, end)
 
     def __str__(self):
-        return "bits: %d (0x%x)" % (self.bits, self.bits)
+        return "cnode bits: %d (0x%x)" % (self.bits, self.bits)
 
 
 class KVINodeBacktrace(CephDataType):

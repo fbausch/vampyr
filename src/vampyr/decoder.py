@@ -24,8 +24,20 @@ class CephPG(CephDataType):
             super().__init__(start, end)
 
     def __str__(self):
-        return "PG pool: %x, seed: 0x%x" % \
+        return "PG pool: %x, seed: 0x%04x" % \
                (self.m_pool, self.m_seed)
+
+    def __eq__(self, other):
+        return str(self) == str(other)
+
+    def __gt__(self, other):
+        return str(self) > str(other)
+
+    def __lt__(self, other):
+        return str(self) < str(other)
+
+    def __hash__(self):
+        return hash((self.m_pool, self.m_seed, self.v))
 
 
 class CephEntityAddr(CephDataType):
