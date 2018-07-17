@@ -57,6 +57,8 @@ class OSD(object):
         return self.rb.read(length)
 
     def read_bluestore_label(self, seek=0):
+        if self.bluestorelabel:
+            return
         h = {}
         bytesize = os.path.getsize(self.osdpath)
 
@@ -113,9 +115,11 @@ class OSD(object):
         print("")
 
     def pextents_pretty_print(self):
+        self.read_bluestore_label()
         osdlength = self.bluestorelabel['osdlength'].value
         CephPExtent.pretty_print(osdlength)
 
     def pextents_extract_unallocated(self, extractdir):
+        self.read_bluestore_label()
         osdlength = self.bluestorelabel['osdlength'].value
         CephPExtent.extract_unallocated(osdlength, self, extractdir)
