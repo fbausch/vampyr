@@ -189,7 +189,7 @@ class BlueFS(object):
         print(header)
         print("-" * len(header))
         for t in sorted(transactions.items(), key=lambda x: x[1]['seq']):
-            print("0x%016x -> seq: %08x: %s" %
+            print("0x%016x -> seq: 0x%08x: %s" %
                   (t[0], t[1]['seq'], t[1]['transaction']))
         print("")
 
@@ -265,6 +265,7 @@ class BlueFSFile(object):
         destinationfull = os.path.join(destination, dirname)
         assert(os.path.isdir(destinationfull))
         filenamefull = os.path.join(destinationfull, filename)
+        filenameslack = os.path.join(destinationfull, "%s_slack" % filename)
         assert(not os.path.exists(filenamefull))
         if len(self.extents) > 1:
             raise NotImplementedError()
@@ -278,7 +279,7 @@ class BlueFSFile(object):
 
         # with open(osdpath, 'rb') as o:
         o = osd
-        with open(filenamefull, 'wb') as f:
+        with open(filenamefull, 'wb') as f, open(filenameslack, 'wb') as s:
             for e in self.extents:
                 o.seek(e.offset)
                 length = e.length
@@ -286,6 +287,8 @@ class BlueFSFile(object):
                     break
                 elif bsize <= length:
                     f.write(o.read(bsize))
+                    slack = length - bsize
+                    s.write(o.read(slack))
                     bsize = 0
                 else:
                     f.write(o.read(length))
@@ -310,7 +313,7 @@ class BlueFSSuperblock(object):
         h['log_fnode'] = BlueFSFNode(handle)
         assert(handle.tell() == h['header'].end_offset)
         self.end = handle.tell()
-        h['unknown'] = CephUnknown(handle, 0x4)
+        h['crc'] = CephInteger(handle, 4).value
         self.data = h
 
     def pretty_print(self):
@@ -335,6 +338,7 @@ class BlueFSSuperblock(object):
         for e in f.extents:
             print("  - %s" % (str(e)))
             print("    (at ~ %d GiB offset)" % (e.offset / 2014**3))
+        print("CRC32 checksum: 0x%4x" % self.data['crc'])
 
         print("------------------------------")
         print("")
@@ -487,4 +491,4 @@ class BlueFSOP(CephInteger):
         super().__init__(handle, 1)
 
     def __str__(self):
-        return "OP_%s" % BlueFSOP.translation_map[self.value]
+        return BlueFSOP.translation_map[self.value]
