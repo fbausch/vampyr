@@ -10,6 +10,7 @@ from vampyr.decoder import CephPG,\
 # from vampyr.cephexceptions import CephUnexpectedMagicException
 import logging
 import re
+import hashlib
 # import functools
 # print = functools.partial(print, flush=True)
 
@@ -230,6 +231,7 @@ class PrefixHandlerO(GenericPrefixHandler):
                 os.makedirs(oedir)
 
             fstripe = os.path.join(oedir, "stripe_%s" % stripe)
+            fmd5 = os.path.join(oedir, "stripe_%s.md5" % stripe)
             fmeta = os.path.join(oedir, "vampyrmeta_%s" % stripe)
             fslack = os.path.join(oedir, "slack_%s" % stripe)
             fdec = os.path.join(oedir, "decoded_%s" % stripe)
@@ -277,8 +279,9 @@ class PrefixHandlerO(GenericPrefixHandler):
                     f.write(decoded)
 
             if onode:
-                with open(fstripe, 'wb') as w, open(fslack, 'wb') as s:
-                    onode.extract(read, 0, w, 0, s)
+                with open(fstripe, 'wb') as w, open(fslack, 'wb') as s,\
+                     open(fmd5, 'w') as m:
+                    onode.extract(read, 0, w, 0, s, m)
                 if "_" in onode.attrs:
                     ts = onode.attrs["_"].mtime.timestamp
                     os.utime(fstripe, (ts, ts))
@@ -848,20 +851,28 @@ class KVONode(CephDataType):
                (self.oid, self.size,
                 ", ".join([str(e) for e in self.extent_map_shards]))
 
-    def extract(self, read, read_offset, write, write_offset, slack_write):
+    def extract(self, read, read_offset, write, write_offset,
+                slack_write, md5_write):
+        md5sum = hashlib.md5()
         for le in self.lextents:
             loff = le.logical_offset
             write.seek(write_offset + loff)
             r, slack = le.read(read)
             logging.debug("length of le %s at offset %s" %
                           (hex(len(r)), hex(loff)))
+            md5sum.update(r)
             if len(slack) > 0:
                 logging.debug("Found slack of length %s" % hex(len(slack)))
                 slack_write.write(slack)
             write.write(r)
-        if self.size > write.tell() - write_offset:
-            write.seek(write_offset + self.size)
+        missing = self.size - (write.tell() - write_offset)
+        if missing > 0:
+            missing = b'\x00' * missing
+            write.write(missing)
+            md5sum.update(missing)
         assert(write.tell() - write_offset == self.size)
+        md5_write.write(md5sum.hexdigest())
+        md5_write.write('\n')
         return self.size
 
     def extract_raw(self, read):

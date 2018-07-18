@@ -7,6 +7,7 @@ from vampyr.cephdatatypes import CephDataType, CephBlockHeader, CephUUID,\
     CephString, CephVarIntegerLowz
 from vampyr.cephexceptions import CephUnexpectedMagicException
 import logging
+import hashlib
 # import functools
 # print = functools.partial(print, flush=True)
 
@@ -266,6 +267,7 @@ class BlueFSFile(object):
         assert(os.path.isdir(destinationfull))
         filenamefull = os.path.join(destinationfull, filename)
         filenameslack = os.path.join(destinationfull, "%s_slack" % filename)
+        filenamemd5 = os.path.join(destinationfull, "%s.md5" % filename)
         assert(not os.path.exists(filenamefull))
         if len(self.extents) > 1:
             raise NotImplementedError()
@@ -277,7 +279,8 @@ class BlueFSFile(object):
         if self.size:
             bsize = self.size
 
-        # with open(osdpath, 'rb') as o:
+        md5sum = hashlib.md5()
+
         o = osd
         with open(filenamefull, 'wb') as f, open(filenameslack, 'wb') as s:
             for e in self.extents:
@@ -286,14 +289,20 @@ class BlueFSFile(object):
                 if bsize == 0:
                     break
                 elif bsize <= length:
-                    f.write(o.read(bsize))
+                    chunk = o.read(bsize)
+                    md5sum.update(chunk)
+                    f.write(chunk)
                     slack = length - bsize
                     s.write(o.read(slack))
                     bsize = 0
                 else:
-                    f.write(o.read(length))
+                    chunk = o.read(length)
+                    md5sum.update(chunk)
+                    f.write(chunk)
                     bsize = bsize - length
-
+        with open(filenamemd5, 'w') as f:
+            f.write(md5sum.hexdigest())
+            f.write('\n')
         assert(bsize == 0)
 
         ts = self.mtime.timestamp
