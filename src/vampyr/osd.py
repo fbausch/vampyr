@@ -76,6 +76,9 @@ class OSD(object):
         logging.debug("bytesize: 0x%x" % bytesize)
         logging.debug("osd.offset: 0x%x" % self.offset)
         assert(h['osdlength'].value <= bytesize - self.offset)
+        self.volume_slack_start_offset = None
+        if h['osdlength'].value < bytesize - self.offset:
+            self.volume_slack_start_offset = self.offset + h['osdlength'].value
         h['fstime'] = CephUTime(self)
         h['main'] = CephString(self)
         pos = self.tell()
@@ -84,8 +87,11 @@ class OSD(object):
         except UnicodeDecodeError:
             self.seek(pos)
         assert(self.tell() == h['header'].end_offset)
-        h['unknown'] = CephUnknown(self, 4)
+        h['crc'] = CephInteger(self, 4)
         h['end'] = self.tell()
+
+        slack_length = 0x1000 - h['end']  # BlueFS superblock starts at 0x1000
+        self.label_slack = self.read(slack_length)
 
         self.bluestorelabel = h
 
@@ -112,7 +118,18 @@ class OSD(object):
                                key=lambda x: x[0].value):
                 print("- %s: %s" % (m, v))
         print("---------------------------------")
+        if self.volume_slack_start_offset:
+            print("Volume slack starts at offset 0x%x of image file" %
+                  self.volume_slack_start_offset)
+            print("---------------------------------")
         print("")
+
+    def extract_label_slack(self, edir):
+        if not self.bluestorelabel:
+            self.read_bluestore_label()
+        slackfile = os.path.join(edir, "slack_bslabel")
+        with open(slackfile, 'wb') as s:
+            s.write(self.label_slack)
 
     def pextents_pretty_print(self):
         self.read_bluestore_label()

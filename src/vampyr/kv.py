@@ -1529,7 +1529,7 @@ class CephPExtent(CephDataType):
     @staticmethod
     def _init_alloc_state(osdlength):
         logging.info("Getting allocated and unallocated area")
-        alloc = [(0, 0x4000)]  # TODO
+        alloc = [(0, 0x2000)]  # Reserved (see BlueStore.cc)
         unalloc = []
         for pe in sorted(CephPExtent.pextentlist):
             logging.debug(str(pe))

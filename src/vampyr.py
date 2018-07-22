@@ -305,6 +305,8 @@ def main():
                 logging.info("Create %s" % allextract)
                 os.makedirs(allextract)
             print("Please wait...")
+            osd.extract_label_slack(allextract)
+            osd.bluefs.superblock.extract_slack(allextract)
             osd.kv.pO.decode_object_data(osd, allextract,
                                          osd.kv.pM, objectfilter)
             print("Please wait a bit longer...")

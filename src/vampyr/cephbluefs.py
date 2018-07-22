@@ -325,6 +325,9 @@ class BlueFSSuperblock(object):
         h['crc'] = CephInteger(handle, 4).value
         self.data = h
 
+        slack_length = 0x2000 - self.end  # Reserved block from 4k-8k offset
+        self.superblock_slack = handle.read(slack_length)
+
     def pretty_print(self):
         print("------------------------------")
         print("BlueFS Superblock Information:")
@@ -351,6 +354,11 @@ class BlueFSSuperblock(object):
 
         print("------------------------------")
         print("")
+
+    def extract_slack(self, edir):
+        slackfile = os.path.join(edir, "slack_bfssuperblock")
+        with open(slackfile, 'wb') as s:
+            s.write(self.superblock_slack)
 
 
 class BlueFSFNode(CephDataType):
