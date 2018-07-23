@@ -232,7 +232,7 @@ def decode_osdmap(onode, read):
         end = h['crush_raw'].end
         logging.info("Start: %s" % hex(start))
         logging.info("End: %s" % hex(end))
-        logging.info("Crush %s" % h['crush_raw'].print_value())
+        # logging.info("Crush %s" % h['crush_raw'].print_value())
         o.seek(start)
         h['crush'] = CephCrush(o)
         o.seek(end)

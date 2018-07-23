@@ -298,6 +298,7 @@ def main():
             print("------------")
             print("Extract all:")
             print("------------")
+            sys.stdout.flush()
             if os.path.isdir(allextract) and clearextract:
                 logging.info("Delete %s" % allextract)
                 shutil.rmtree(allextract)
@@ -305,19 +306,23 @@ def main():
                 logging.info("Create %s" % allextract)
                 os.makedirs(allextract)
             print("Please wait...")
+            sys.stdout.flush()
             osd.extract_label_slack(allextract)
             osd.bluefs.superblock.extract_slack(allextract)
             osd.kv.pO.decode_object_data(osd, allextract,
                                          osd.kv.pM, objectfilter)
             print("Please wait a bit longer...")
+            sys.stdout.flush()
             osd.kv.pM.decode_object_data(osd, allextract,
                                          osd.kv.pO, objectfilter)
             print("Almost done...")
+            sys.stdout.flush()
             osd.kv.pM.decode_object_data(osd, allextract,
                                          osd.kv.pO, objectfilter)
             osd.kv.pP.decode_object_data(osd, allextract,
                                          osd.kv.pO, objectfilter)
             print("Done")
+            sys.stdout.flush()
 
 
 if __name__ == "__main__":

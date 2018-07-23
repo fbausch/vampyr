@@ -4,9 +4,10 @@ import shutil
 from vampyr.cephbluefs import BlueFS
 from vampyr.cephdatatypes import CephInteger,\
     CephFixedString, CephBlockHeader, CephUUID, CephUTime, CephString,\
-    CephUnknown, CephStringDict
+    CephStringDict
 from vampyr.kv import RDBKV, CephPExtent
 import logging
+import sys
 
 
 class OSD(object):
@@ -125,6 +126,7 @@ class OSD(object):
                   self.volume_slack_start_offset)
             print("---------------------------------")
         print("")
+        sys.stdout.flush()
 
     def extract_label_slack(self, edir):
         if not self.bluestorelabel:

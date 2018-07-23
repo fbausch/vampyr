@@ -11,6 +11,7 @@ from vampyr.decoder import CephPG,\
 import logging
 import re
 import hashlib
+import sys
 # import functools
 # print = functools.partial(print, flush=True)
 
@@ -20,11 +21,36 @@ class RDBKV(object):
 
     def __init__(self, workingdir):
         self.wdir = workingdir
-        self.datasets = []
         self.pools = {}
+        self._datasets = None
+        self._pO = None
+        self._pS = None
+        self._pT = None
+        self._pC = None
+        self._pM = None
+        self._pP = None
+        self._pB = None
+        self._pb = None
+        self._pL = None
+        self._pX = None
+
+    def _load(self, phandler):
+        datasets = self.datasets[phandler.prefix]
+        for d in sorted(datasets.keys()):
+            k = ByteHandler(d)
+            v = ByteHandler(datasets[d][0])
+            phandler.parse_dataset(k, v)
+
+    @property
+    def datasets(self):
+        if self._datasets:
+            return self._datasets
+        self._datasets = {'O': {}, 'S': {}, 'T': {}, 'C': {}, 'M': {},
+                          'P': {}, 'B': {}, 'b': {}, 'L': {}, 'X': {}}
 
         # command = ['sst_dump', '--file=%s' % self.wdir,
         #            '--command=scan', '--output_hex']
+
         if RDBKV.ldb is None:
             RDBKV.ldb = 'ldb'
         else:
@@ -32,6 +58,7 @@ class RDBKV(object):
         command = [RDBKV.ldb, 'idump', '--db=%s' % self.wdir,
                    '--hex']
 
+        logging.info("Running command: %s" % " ".join(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE)
 
@@ -39,9 +66,7 @@ class RDBKV(object):
         if proc.returncode != 0:
             logging.error("Could not get content of KV store.")
             logging.error("Returncode was %d." % proc.returncode)
-            return
-
-        datasets = {}
+            return self._datasets
         regex = "^'([0-9A-F]+)' seq:([0-9]+), type:([0-9]+) => ([0-9A-F]*)$"
         regex = re.compile(regex)
         for line in o.decode('utf-8').split('\n'):
@@ -50,43 +75,90 @@ class RDBKV(object):
                 logging.debug("not matching: %s" % line)
                 continue
             k = m.group(1)
+            assert(k[2:4] == "00")
             seq = int(m.group(2))
             t = int(m.group(3))
             v = m.group(4)
-            if k in datasets and datasets[k][1] > seq:
+            prefix = chr(int(k[0:2], 16))
+            if k in self._datasets[prefix] and\
+               self._datasets[prefix][k][1] > seq:
                 continue
             else:
-                datasets[k] = (v, seq, t)
+                self._datasets[prefix][k] = (v, seq, t)
+        return self._datasets
 
-        self.pO = PrefixHandlerO()
-        self.pS = PrefixHandlerS()
-        self.pT = PrefixHandlerT()
-        self.pC = PrefixHandlerC()
-        self.pM = PrefixHandlerMP(prefix=b'M')
-        self.pP = PrefixHandlerMP(prefix=b'P')
-        self.pB = PrefixHandlerB()
-        self.pb = PrefixHandlerb()
-        self.pL = PrefixHandlerL()
-        self.pX = PrefixHandlerX()
-        pfx = [self.pO, self.pS, self.pT, self.pC, self.pM,
-               self.pP, self.pB, self.pb, self.pL, self.pX]
-        for d in sorted(datasets.keys()):
-            k = ByteHandler(d)
-            v = ByteHandler(datasets[d][0])
-            for f in pfx:
-                if f.feels_responsible_for(k):
-                    f.parse_dataset(k, v)
-                    break
-            else:
-                k.seek(0)
-                p = CephFixedString(k, 1).value
-                logging.error("Unknown dataset type found: %s" % p)
+    @property
+    def pO(self):
+        if not self._pO:
+            self._pO = PrefixHandlerO()
+            self._load(self._pO)
+        return self._pO
+
+    @property
+    def pS(self):
+        if not self._pS:
+            self._pS = PrefixHandlerS()
+            self._load(self._pS)
+        return self._pS
+
+    @property
+    def pT(self):
+        if not self._pT:
+            self._pT = PrefixHandlerT()
+            self._load(self._pT)
+        return self._pT
+
+    @property
+    def pC(self):
+        if not self._pC:
+            self._pC = PrefixHandlerC()
+            self._load(self._pC)
+        return self._pC
+
+    @property
+    def pM(self):
+        if not self._pM:
+            self._pM = PrefixHandlerMP(prefix='M')
+            self._load(self._pM)
+        return self._pM
+
+    @property
+    def pP(self):
+        if not self._pP:
+            self._pP = PrefixHandlerMP(prefix='P')
+            self._load(self._pP)
+        return self._pP
+
+    @property
+    def pB(self):
+        if not self._pB:
+            self._pB = PrefixHandlerB()
+            self._load(self._pB)
+        return self._pB
+
+    @property
+    def pb(self):
+        if not self._pb:
+            self._pb = PrefixHandlerb()
+            self._load(self._pb)
+        return self._pb
+
+    @property
+    def pL(self):
+        if not self._pL:
+            self._pL = PrefixHandlerL()
+            self._load(self._pL)
+        return self._pL
+
+    @property
+    def pX(self):
+        if not self.pX:
+            self._pX = PrefixHandlerX()
+            self._load(self._pX)
+        return self._pX
 
 
 class GenericPrefixHandler(object):
-
-    def feels_responsible_for(self, k):
-        raise NotImplementedError()
 
     def parse_dataset(self, k, v):
         raise NotImplementedError()
@@ -95,14 +167,11 @@ class GenericPrefixHandler(object):
 class PrefixHandlerO(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'O'
-
     def __init__(self):
         self.onode_map = {}
         self.poolids = []
         self.oid_map = {}
+        self.prefix = 'O'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -178,6 +247,7 @@ class PrefixHandlerO(GenericPrefixHandler):
                 print("%s -> %s" % (oid, stripes))
             print("-----------------------")
             print("")
+            sys.stdout.flush()
 
     def print_decoded(self, read, fltr):
         if not fltr:
@@ -280,7 +350,7 @@ class PrefixHandlerO(GenericPrefixHandler):
 
             if onode:
                 with open(fstripe, 'wb') as w, open(fslack, 'wb') as s,\
-                     open(fmd5, 'w') as m:
+                        open(fmd5, 'w') as m:
                     onode.extract(read, 0, w, 0, s, m)
                 if "_" in onode.attrs:
                     ts = onode.attrs["_"].mtime.timestamp
@@ -320,12 +390,9 @@ class PrefixHandlerO(GenericPrefixHandler):
 class PrefixHandlerS(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'S'
-
     def __init__(self):
         self.metadata_map = {}
+        self.prefix = 'S'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -353,17 +420,15 @@ class PrefixHandlerS(GenericPrefixHandler):
         for m in sorted(self.metadata_map.items(), key=lambda x: x[0]):
             print("%16s: %s" % (m[0], str(m[1])))
         print("")
+        sys.stdout.flush()
 
 
 class PrefixHandlerT(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'T'
-
     def __init__(self):
         self.statfs_map = {}
+        self.prefix = 'T'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -383,17 +448,15 @@ class PrefixHandlerT(GenericPrefixHandler):
         for m in sorted(self.statfs_map.items(), key=lambda x: x[0]):
             print("%16s: %s" % (m[0], str(m[1])))
         print("")
+        sys.stdout.flush()
 
 
 class PrefixHandlerC(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'C'
-
     def __init__(self):
         self.cnode_map = {}
+        self.prefix = 'C'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -420,28 +483,24 @@ class PrefixHandlerC(GenericPrefixHandler):
         for m in sorted(self.cnode_map.items(), key=lambda x: x[0]):
             print("%16s: %s" % (str(m[0]), str(m[1])))
         print("")
+        sys.stdout.flush()
 
 
 class PrefixHandlerMP(GenericPrefixHandler):
     counter = 0
-
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == self.prefix
 
     def __init__(self, prefix):
         self.meta_map = {}
         self.header_map = {}
         self.inode_map = {}
         self.prefix = prefix
-        self.prefix_dec = prefix.decode('utf-8')
 
     def parse_dataset(self, k, v):
         k.seek(2)
         PrefixHandlerMP.counter += 1
-        if self.prefix == b'P' or PrefixHandlerMP.counter % 10000 == 0:
+        if self.prefix == 'P' or PrefixHandlerMP.counter % 10000 == 0:
             logging.info("%s: reading %dth KV" %
-                         (self.prefix_dec, PrefixHandlerMP.counter))
+                         (self.prefix, PrefixHandlerMP.counter))
         oid = CephInteger(k, 8, byteorder='big').value
         nextchar = k.read(1)
         assert(nextchar in [b'.', b'-'])
@@ -459,7 +518,7 @@ class PrefixHandlerMP(GenericPrefixHandler):
 
         length = k.length() - k.tell()
         key = CephFixedString(k, length).value
-        logging.debug("%s: %s %s" % (self.prefix_dec, str(oid), key))
+        logging.debug("%s: %s %s" % (self.prefix, str(oid), key))
         if v.length() == 0:
             val = None
         read = v.length() != 0
@@ -540,7 +599,7 @@ class PrefixHandlerMP(GenericPrefixHandler):
             fltr = ".*"
         logging.info("Using filter: %s" % fltr)
         fltr = re.compile(fltr)
-        metafile = os.path.join(edir, "kvmetadata_%s" % self.prefix_dec)
+        metafile = os.path.join(edir, "kvmetadata_%s" % self.prefix)
         logging.debug("Metafile %s" % metafile)
         with open(metafile, 'w') as f:
             f.write("Metadata from Key Value Store:\n")
@@ -583,7 +642,7 @@ class PrefixHandlerMP(GenericPrefixHandler):
                 with open(fmeta, 'a') as f:
                     f.write("Metadata extracted from CephFS ")
                     f.write("directory metadata in KV store")
-                    f.write(" (prefix %s):\n" % self.prefix_dec)
+                    f.write(" (prefix %s):\n" % self.prefix)
                     f.write("%s\n" % str(v))
                 fself = os.path.join(oiddir, 'self_%s' % k)
                 with open(fself, 'w') as f:
@@ -593,12 +652,9 @@ class PrefixHandlerMP(GenericPrefixHandler):
 class PrefixHandlerB(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'B'
-
     def __init__(self):
         self.bnode_map = {}
+        self.prefix = 'B'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -615,17 +671,15 @@ class PrefixHandlerB(GenericPrefixHandler):
         print("----------------")
         for k in sorted(self.bnode_map.keys()):
             print("%s --> 0x%x" % (k, self.bnode_map[k]))
+        sys.stdout.flush()
 
 
 class PrefixHandlerb(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'b'
-
     def __init__(self):
         self.alloc_map = {}
+        self.prefix = 'b'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -645,6 +699,7 @@ class PrefixHandlerb(GenericPrefixHandler):
         for k in sorted(self.alloc_map.keys()):
             mask = fstring.format(self.alloc_map[k], fill="0")
             print("0x%016x --> %s" % (k, mask))
+        sys.stdout.flush()
 
     def extract_unallocated(self, osd, pB, edir):
         header = "Extracting unallocated areas to %s" % edir
@@ -694,12 +749,9 @@ class PrefixHandlerb(GenericPrefixHandler):
 class PrefixHandlerL(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'L'
-
     def __init__(self):
         self.l_map = {}
+        self.prefix = 'L'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -715,12 +767,9 @@ class PrefixHandlerL(GenericPrefixHandler):
 class PrefixHandlerX(GenericPrefixHandler):
     counter = 0
 
-    def feels_responsible_for(self, k):
-        k.seek(0)
-        return k.read(1) == b'X'
-
     def __init__(self):
         self.x_map = {}
+        self.prefix = 'X'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -1567,6 +1616,7 @@ class CephPExtent(CephDataType):
         print("------------------")
         for e in CephPExtent.unalloc:
             print("0x%x-0x%x" % e)
+        sys.stdout.flush()
 
     @staticmethod
     def extract_unallocated(osdlength, r, edir):
