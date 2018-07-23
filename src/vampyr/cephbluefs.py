@@ -350,7 +350,7 @@ class BlueFSSuperblock(object):
         for e in f.extents:
             print("  - %s" % (str(e)))
             print("    (at ~ %d GiB offset)" % (e.offset / 2014**3))
-        print("CRC32 checksum: 0x%4x" % self.data['crc'])
+        print("CRC32 checksum: 0x%08x" % self.data['crc'])
 
         print("------------------------------")
         print("")

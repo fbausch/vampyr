@@ -71,6 +71,7 @@ class OSD(object):
         assert(h['label'].value[59] == "\n")
         h['header'] = CephBlockHeader(self)
         h['uuid'] = CephUUID(self)
+        assert(str(h['uuid']) == h['label'].value[23:59])
         h['osdlength'] = CephInteger(self, 8)
         logging.debug("osdlength: 0x%x" % h['osdlength'].value)
         logging.debug("bytesize: 0x%x" % bytesize)
@@ -117,6 +118,7 @@ class OSD(object):
             for m, v in sorted(data['meta'].elements.items(),
                                key=lambda x: x[0].value):
                 print("- %s: %s" % (m, v))
+        print("Checksum: 0x%08x" % data['crc'].value)
         print("---------------------------------")
         if self.volume_slack_start_offset:
             print("Volume slack starts at offset 0x%x of image file" %
