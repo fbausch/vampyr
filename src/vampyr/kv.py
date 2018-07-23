@@ -351,7 +351,7 @@ class PrefixHandlerO(GenericPrefixHandler):
             if onode:
                 with open(fstripe, 'wb') as w, open(fslack, 'wb') as s,\
                         open(fmd5, 'w') as m:
-                    onode.extract(read, 0, w, 0, s, m)
+                    onode.extract(read, w, s, m)
                 if "_" in onode.attrs:
                     ts = onode.attrs["_"].mtime.timestamp
                     os.utime(fstripe, (ts, ts))
@@ -900,12 +900,11 @@ class KVONode(CephDataType):
                (self.oid, self.size,
                 ", ".join([str(e) for e in self.extent_map_shards]))
 
-    def extract(self, read, read_offset, write, write_offset,
-                slack_write, md5_write):
+    def extract(self, read, write, slack_write, md5_write):
         md5sum = hashlib.md5()
         for le in self.lextents:
             loff = le.logical_offset
-            write.seek(write_offset + loff)
+            write.seek(loff)
             r, slack = le.read(read)
             logging.debug("length of le %s at offset %s" %
                           (hex(len(r)), hex(loff)))
@@ -914,12 +913,12 @@ class KVONode(CephDataType):
                 logging.debug("Found slack of length %s" % hex(len(slack)))
                 slack_write.write(slack)
             write.write(r)
-        missing = self.size - (write.tell() - write_offset)
+        missing = self.size - write.tell()
         if missing > 0:
             missing = b'\x00' * missing
             write.write(missing)
             md5sum.update(missing)
-        assert(write.tell() - write_offset == self.size)
+        assert(write.tell() == self.size)
         md5_write.write(md5sum.hexdigest())
         md5_write.write('\n')
         return self.size
