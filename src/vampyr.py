@@ -198,7 +198,6 @@ def main():
             if not os.path.isdir(d):
                 os.makedirs(d)
         with OSD(osdpath, startoffset=offset, initkv=False) as osd:
-            osd.read_bluestore_label()
             osdlength = osd.bluestorelabel['osdlength'].value
             osd.seek(0)
             perc = 0
