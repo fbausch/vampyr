@@ -13,7 +13,7 @@ import hashlib
 
 
 class BlueFS(object):
-    def __init__(self, osd, superblock=0x1000):
+    def __init__(self, osd):
 
         self.initialized = False
         self.allocated_areas = {}
@@ -27,7 +27,7 @@ class BlueFS(object):
         self.osd = osd
 
         o = osd
-        self.superblock = BlueFSSuperblock(o, superblock)
+        self.superblock = BlueFSSuperblock(o)
         self.ino_to_file_map[self.superblock.data['log_fnode'].ino] =\
             BlueFSFile(self.superblock.data['log_fnode'].ino,
                        self.superblock.data['log_fnode'].size,
@@ -49,6 +49,17 @@ class BlueFS(object):
             logical_offset = self.read_bluefs_extents(extents, logical_offset)
             newextents = self.get_file(1).extents
             extents = [x for x in newextents if x not in oldextents]
+        assert(self._validate_extent_location())
+
+    def _validate_extent_location(self):
+        for e in self.allocated_extents:
+            match = False
+            for a in self.allocated_areas.values():
+                if e.offset >= a[0] and e.offset + e.length <= a[0] + a[1]:
+                    match = True
+            if not match:
+                return False
+        return True
 
     def read_bluefs_extents(self, extents, logical_offset):
         for e in extents:
@@ -167,7 +178,7 @@ class BlueFS(object):
     def get_file(self, ino):
         return self.ino_to_file_map[ino]
 
-    def dump_state(self):
+    def dump_state(self, verbose=False):
         print("----------------")
         print("State of BlueFS:")
         print("----------------")
@@ -189,6 +200,15 @@ class BlueFS(object):
                 else:
                     print(o)
         print("----------------")
+        if verbose:
+            print("Allocated extents:")
+            for e in sorted(self.allocated_extents, key=lambda x: x.offset):
+                print(e)
+            print("----------------")
+            print("Deallocated extents:")
+            for e in sorted(self.deallocated_extents, key=lambda x: x.offset):
+                print(e)
+            print("----------------")
         print("")
 
     def print_transactions(self, skipped=False):
@@ -208,6 +228,7 @@ class BlueFS(object):
     def extract_state(self, destination):
         for d in self.dirlist:
             d.mkdir(destination)
+        self.superblock.extract_slack(destination)
         for ino, file in self.ino_to_file_map.items():
             filename = None
             for d in self.dirlist:
@@ -321,9 +342,9 @@ class BlueFSFile(object):
 
 
 class BlueFSSuperblock(object):
-    def __init__(self, handle, seek):
+    def __init__(self, handle):
         h = {}
-        handle.seek(seek)
+        handle.seek(0x1000)  # Superblock starts at 0x1000
         self.start = handle.tell()
         h['header'] = CephBlockHeader(handle)
         h['uuid'] = CephUUID(handle)
@@ -336,7 +357,8 @@ class BlueFSSuperblock(object):
         h['crc'] = CephInteger(handle, 4).value
         self.data = h
 
-        slack_length = 0x2000 - self.end  # Reserved block from 4k-8k offset
+        slack_length = 0x2000 - handle.tell()  # Reserved block to 8k offset
+        assert(slack_length >= 0)
         self.superblock_slack = handle.read(slack_length)
 
     def pretty_print(self):

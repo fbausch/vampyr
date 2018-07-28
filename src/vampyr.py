@@ -261,7 +261,7 @@ def main():
 
         if "bfssuper" in actions:
             osd.bluefs.superblock.pretty_print()
-            osd.bluefs.dump_state()
+            osd.bluefs.dump_state(verbose=verbose)
         if "bfstx" in actions:
             osd.bluefs.print_transactions()
             osd.bluefs.print_transactions(skipped=True)
