@@ -168,17 +168,28 @@ class BlueFS(object):
         return self.ino_to_file_map[ino]
 
     def dump_state(self):
+        print("----------------")
+        print("State of BlueFS:")
+        print("----------------")
+        print("Allocated areas:")
         for mid, alloc in self.allocated_areas.items():
-            logging.debug("Alloc %d: 0x%x+0x%x" % (mid, alloc[0], alloc[1]))
-        logging.debug("superblock --> %s" % self.ino_to_file_map[1])
+            print("Alloc %d: 0x%x+0x%x" % (mid, alloc[0], alloc[1]))
+        print("----------------")
+        print("Transaction log:")
+        print("Transaction log --> %s" % self.ino_to_file_map[1])
+        print("----------------")
+        print("Files:")
         for d in self.dirlist:
-            for ino, filename in d.ino_to_file_map.items():
+            for ino, filename in sorted(d.ino_to_file_map.items(),
+                                        key=lambda x: x[0]):
                 o = "file %s/%s --> ino %d" % (d.dirname, filename, ino)
                 if ino in self.ino_to_file_map:
                     file = self.ino_to_file_map[ino]
-                    logging.debug("%s --> %s" % (o, file))
+                    print("%s --> %s" % (o, file))
                 else:
-                    logging.debug(o)
+                    print(o)
+        print("----------------")
+        print("")
 
     def print_transactions(self, skipped=False):
         transactions = self.transactions
