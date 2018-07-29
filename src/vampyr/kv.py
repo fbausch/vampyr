@@ -384,7 +384,11 @@ class PrefixHandlerO(GenericPrefixHandler):
                         w.write("Store (M prefix)\n")
                         for k, v in sorted(pMP.meta_map[onode.oid].items(),
                                            key=lambda x: x[0]):
-                            w.write("%s: %s\n" % (str(k), str(v)))
+                            if isinstance(v, tuple):
+                                v = "(%s, %s)" % (str(v[0]), str(v[1]))
+                            else:
+                                v = str(v)
+                            w.write("%s: %s\n" % (str(k), v))
 
 
 class PrefixHandlerS(GenericPrefixHandler):
@@ -506,6 +510,7 @@ class PrefixHandlerMP(GenericPrefixHandler):
         assert(nextchar in [b'.', b'-'])
 
         if nextchar == b"-":
+            # We found CephFS directory metadata
             if v.length() == 0:
                 return
             val = KVFNode(v)

@@ -156,10 +156,7 @@ def main():
         elif opt in ("--lspgs"):
             actions_o.append("lspgs")
         elif opt in ("--offset"):
-            if arg.startswith("0x"):
-                offset = int(arg[2:], 16)
-            else:
-                offset = int(arg)
+            offset = int(arg, 0)
 
         elif opt in ("--logging"):
             loglevel = arg
