@@ -1,13 +1,15 @@
-#!/usr/bin/python3
+"""
+Module to deal with RocksDB KV stores.
+"""
+
 import subprocess
 import os
-from vampyr.cephdatatypes import CephDataType, CephFixedString, CephInteger,\
+from vampyr.datatypes import CephDataType, CephFixedString, CephInteger,\
     CephUnknown, CephString, CephUTime, CephIntegerPairList, CephDict,\
     ByteHandler, CephBlockHeader, CephVarInteger, CephBufferlist, CephList,\
     CephIntegerList, CephVarIntegerLowz, CephLBA
 from vampyr.decoder import CephPG,\
     decode_osdmap, decode_inc_osdmap, decode_osd_super
-# from vampyr.cephexceptions import CephUnexpectedMagicException
 import logging
 import re
 import hashlib
@@ -17,9 +19,19 @@ import sys
 
 
 class RDBKV(object):
+    """
+    Class to load a KV store in a RocksDB. It needs to have either
+    ldb in the PATH or RDBKV.ldb has to be set to the ldb tool.
+
+    For every KV store prefix (e.g. O, M) there is a property
+    that holds all the KV sets with this prefix. For example pO, pM.
+    """
     ldb = None
 
     def __init__(self, workingdir):
+        """
+        workingdir: The path to a RocksDB database.
+        """
         self.wdir = workingdir
         self.pools = {}
         self._datasets = None
@@ -35,6 +47,11 @@ class RDBKV(object):
         self._pX = None
 
     def _load(self, phandler):
+        """
+        Load all datasets that are handled by a certain
+        prefix handler.
+        phandler: The prefix handler.
+        """
         datasets = self.datasets[phandler.prefix]
         for d in sorted(datasets.keys()):
             k = ByteHandler(d)
@@ -43,6 +60,9 @@ class RDBKV(object):
 
     @property
     def datasets(self):
+        """
+        Unparsed datasets loaded using the ldb tool, sorted by prefix.
+        """
         if self._datasets:
             return self._datasets
         self._datasets = {'O': {}, 'S': {}, 'T': {}, 'C': {}, 'M': {},
@@ -89,6 +109,9 @@ class RDBKV(object):
 
     @property
     def pO(self):
+        """
+        PrefixHandler that holds all O-rows.
+        """
         if not self._pO:
             self._pO = PrefixHandlerO()
             self._load(self._pO)
@@ -96,6 +119,9 @@ class RDBKV(object):
 
     @property
     def pS(self):
+        """
+        PrefixHandler that holds all S-rows.
+        """
         if not self._pS:
             self._pS = PrefixHandlerS()
             self._load(self._pS)
@@ -103,6 +129,9 @@ class RDBKV(object):
 
     @property
     def pT(self):
+        """
+        PrefixHandler that holds all T-rows.
+        """
         if not self._pT:
             self._pT = PrefixHandlerT()
             self._load(self._pT)
@@ -110,6 +139,9 @@ class RDBKV(object):
 
     @property
     def pC(self):
+        """
+        PrefixHandler that holds all C-rows.
+        """
         if not self._pC:
             self._pC = PrefixHandlerC()
             self._load(self._pC)
@@ -117,6 +149,9 @@ class RDBKV(object):
 
     @property
     def pM(self):
+        """
+        PrefixHandler that holds all M-rows.
+        """
         if not self._pM:
             self._pM = PrefixHandlerMP(prefix='M')
             self._load(self._pM)
@@ -124,6 +159,9 @@ class RDBKV(object):
 
     @property
     def pP(self):
+        """
+        PrefixHandler that holds all P-rows.
+        """
         if not self._pP:
             self._pP = PrefixHandlerMP(prefix='P')
             self._load(self._pP)
@@ -131,6 +169,9 @@ class RDBKV(object):
 
     @property
     def pB(self):
+        """
+        PrefixHandler that holds all B-rows.
+        """
         if not self._pB:
             self._pB = PrefixHandlerB()
             self._load(self._pB)
@@ -138,6 +179,9 @@ class RDBKV(object):
 
     @property
     def pb(self):
+        """
+        PrefixHandler that holds all b-rows.
+        """
         if not self._pb:
             self._pb = PrefixHandlerb()
             self._load(self._pb)
@@ -145,6 +189,9 @@ class RDBKV(object):
 
     @property
     def pL(self):
+        """
+        PrefixHandler that holds all L-rows.
+        """
         if not self._pL:
             self._pL = PrefixHandlerL()
             self._load(self._pL)
@@ -152,6 +199,9 @@ class RDBKV(object):
 
     @property
     def pX(self):
+        """
+        PrefixHandler that holds all X-rows.
+        """
         if not self.pX:
             self._pX = PrefixHandlerX()
             self._load(self._pX)
@@ -159,12 +209,24 @@ class RDBKV(object):
 
 
 class GenericPrefixHandler(object):
+    """
+    Abstract class for prefix handlers.
+    """
 
     def parse_dataset(self, k, v):
+        """
+        Parse a dataset.
+        k: The key
+        v: The value
+        """
         raise NotImplementedError()
 
 
 class PrefixHandlerO(GenericPrefixHandler):
+    """
+    The PrefixHandler to load O-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -174,6 +236,9 @@ class PrefixHandlerO(GenericPrefixHandler):
         self.prefix = 'O'
 
     def parse_dataset(self, k, v):
+        """
+        Parses a dataset
+        """
         k.seek(2)
         thiskey = KVObjectNameKey(k)
         assert(k.end() or k.tell() + 5 == k.length())
@@ -219,37 +284,48 @@ class PrefixHandlerO(GenericPrefixHandler):
             KVExtentMap(v, onode, noheader=True)
 
     def pretty_print(self, fltr):
-            print("-----------------------")
-            print("Object List:")
-            print("-----------------------")
-            print("ID            -> stripe")
-            print("-----------------------")
-            if not fltr:
-                fltr = ".*"
-            logging.info("Using filter: %s" % fltr)
-            fltr = re.compile(fltr)
-            m = {}
-            for key in sorted(self.onode_map.keys(), key=lambda x: x.key):
-                oid = key.oid
-                if not re.match(fltr, oid):
-                    continue
-                stripe = key.stripe
-                stripe_sort = key.stripe_sort
-                if not stripe:
+        """
+        Prints object names to stdout.
+        fltr: A regex that filters object names. Only matching objects are
+              printed.
+        """
+        print("-----------------------")
+        print("Object List:")
+        print("-----------------------")
+        print("ID            -> stripe")
+        print("-----------------------")
+        if not fltr:
+            fltr = ".*"
+        logging.info("Using filter: %s" % fltr)
+        fltr = re.compile(fltr)
+        m = {}
+        for key in sorted(self.onode_map.keys(), key=lambda x: x.key):
+            oid = key.oid
+            if not re.match(fltr, oid):
+                continue
+            stripe = key.stripe
+            stripe_sort = key.stripe_sort
+            if not stripe:
+                m[oid] = []
+            else:
+                if oid not in m:
                     m[oid] = []
-                else:
-                    if oid not in m:
-                        m[oid] = []
-                    m[oid].append((stripe, stripe_sort))
-            for oid in sorted(m.keys()):
-                stripes = sorted(m[oid], key=lambda x: x[1])
-                stripes = ", ".join([s[0] for s in stripes])
-                print("%s -> %s" % (oid, stripes))
-            print("-----------------------")
-            print("")
-            sys.stdout.flush()
+                m[oid].append((stripe, stripe_sort))
+        for oid in sorted(m.keys()):
+            stripes = sorted(m[oid], key=lambda x: x[1])
+            stripes = ", ".join([s[0] for s in stripes])
+            print("%s -> %s" % (oid, stripes))
+        print("-----------------------")
+        print("")
+        sys.stdout.flush()
 
     def print_decoded(self, read, fltr):
+        """
+        Prints decoded objects to stdout. For example osdmap objects.
+        read: The OSD/open file to read the object data from.
+        fltr: A regex that filters object names. Only matching objects are
+              handled.
+        """
         if not fltr:
             fltr = ".*"
         logging.info("Using filter: %s" % fltr)
@@ -282,6 +358,16 @@ class PrefixHandlerO(GenericPrefixHandler):
                 print("-----------------\n")
 
     def decode_object_data(self, read, edir, pMP, fltr):
+        """
+        Decodes object data to a directory. It will try to extract as many
+        information as possible.
+        read: The OSD/open file.
+        edir: The directory to extract to. It must exist.
+        pMP: A PrefixHandler for M-rows or P-rows. The matching M-rows or
+             P-rows are looked up using the OID.
+        fltr: A regex that filters object names. Only matching objects are
+              handled.
+        """
         if not fltr:
             fltr = ".*"
         logging.info("Using filter: %s" % fltr)
@@ -392,6 +478,10 @@ class PrefixHandlerO(GenericPrefixHandler):
 
 
 class PrefixHandlerS(GenericPrefixHandler):
+    """
+    The PrefixHandler to load S-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -428,6 +518,10 @@ class PrefixHandlerS(GenericPrefixHandler):
 
 
 class PrefixHandlerT(GenericPrefixHandler):
+    """
+    The PrefixHandler to load T-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -456,6 +550,10 @@ class PrefixHandlerT(GenericPrefixHandler):
 
 
 class PrefixHandlerC(GenericPrefixHandler):
+    """
+    The PrefixHandler to load C-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -491,6 +589,10 @@ class PrefixHandlerC(GenericPrefixHandler):
 
 
 class PrefixHandlerMP(GenericPrefixHandler):
+    """
+    The PrefixHandler to load M-rows or P-rows.
+    """
+
     counter = 0
 
     def __init__(self, prefix):
@@ -655,6 +757,10 @@ class PrefixHandlerMP(GenericPrefixHandler):
 
 
 class PrefixHandlerB(GenericPrefixHandler):
+    """
+    The PrefixHandler to load B-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -680,6 +786,10 @@ class PrefixHandlerB(GenericPrefixHandler):
 
 
 class PrefixHandlerb(GenericPrefixHandler):
+    """
+    The PrefixHandler to load b-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -752,6 +862,10 @@ class PrefixHandlerb(GenericPrefixHandler):
 
 
 class PrefixHandlerL(GenericPrefixHandler):
+    """
+    The PrefixHandler to load L-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -770,6 +884,10 @@ class PrefixHandlerL(GenericPrefixHandler):
 
 
 class PrefixHandlerX(GenericPrefixHandler):
+    """
+    The PrefixHandler to load X-rows.
+    """
+
     counter = 0
 
     def __init__(self):
@@ -786,6 +904,9 @@ class PrefixHandlerX(GenericPrefixHandler):
 
 
 class KVObjectNameKey(CephDataType):
+    """
+    This loads the keys of O-rows in the KV store.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.shard = CephInteger(handle, 1).value
@@ -811,7 +932,8 @@ class KVObjectNameKey(CephDataType):
 
     def __str__(self):
         return "shard: 0x%x, ns: %s, key: %s, name: %s, poolid: 0x%x, snap: 0x%x, gen: 0x%x" % \
-            (self.shard, self.ns, self.key, self.name, self.poolid, self.snap, self.generation)
+            (self.shard, self.ns, self.key, self.name, self.poolid, self.snap,
+                self.generation)
 
     def __eq__(self, other):
         return self.key == other.key
@@ -834,6 +956,9 @@ class KVObjectNameKey(CephDataType):
 
 
 class CephEscapedString(CephDataType):
+    """
+    Reads Escaped object names from the KV store.
+    """
     def __init__(self, handle):
         start = handle.tell()
         ra = handle.read(1)
@@ -854,6 +979,9 @@ class CephEscapedString(CephDataType):
 
 
 class KVONode(CephDataType):
+    """
+    Reads onode data structures.
+    """
     spanning_blob_map = {}
     shared_blob_map = {}
 
@@ -906,6 +1034,14 @@ class KVONode(CephDataType):
                 ", ".join([str(e) for e in self.extent_map_shards]))
 
     def extract(self, read, write, slack_write, md5_write):
+        """
+        Extract an object.
+        read: The OSD/open file.
+        write: The file handle to write the content to.
+        slack_write: The file handle to write the slack space to.
+        md5_write: The file handle to write the md5 sum of the object content
+                   to.
+        """
         md5sum = hashlib.md5()
         for le in self.lextents:
             loff = le.logical_offset
@@ -929,6 +1065,10 @@ class KVONode(CephDataType):
         return self.size
 
     def extract_raw(self, read):
+        """
+        Get the content of all extents.
+        read: The OSD/open file.
+        """
         rtotal = b''
         for le in self.lextents:
             r, slack = le.read(read)
@@ -936,6 +1076,12 @@ class KVONode(CephDataType):
         return rtotal
 
     def create_tree(self, edir):
+        """
+        If an object contains CephFS metadata (in _parent xattr)
+        we will create some symlinks to parents and also symlink
+        the parents to their child.
+        edir: The directory to work in.
+        """
         if "_parent" not in self.attrs:
             return
         childinode = self.attrs["_parent"].inode
@@ -962,6 +1108,9 @@ class KVONode(CephDataType):
 
 
 class KVExtentMap(CephDataType):
+    """
+    Handles extent map shards and adds the info to the respective onode.
+    """
     CONTIGUOUS = 0x1
     ZEROOFFSET = 0x2
     SAMELENGTH = 0x4
@@ -1029,6 +1178,9 @@ class KVExtentMap(CephDataType):
                 ", ".join([str(e) for e in self.onode.lextents]))
 
     class LExtent(object):
+        """
+        Reads logical extent information.
+        """
         def __init__(self):
             self.logical_offset = None
             self.blob_offset = None
@@ -1055,6 +1207,9 @@ class KVExtentMap(CephDataType):
 
 
 class KVBlob(CephDataType):
+    """
+    Read blob info.
+    """
     COMPRESSED = 0x2
     CSUM = 0x4
     HAS_UNUSED = 0x8
@@ -1106,6 +1261,9 @@ class KVBlob(CephDataType):
 
 
 class KVCNode(CephDataType):
+    """
+    Read cnode data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1119,6 +1277,9 @@ class KVCNode(CephDataType):
 
 
 class KVINodeBacktrace(CephDataType):
+    """
+    Read inode backtrace data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1150,6 +1311,9 @@ class KVINodeBacktrace(CephDataType):
 
 
 class KVINodeBackpointer(CephDataType):
+    """
+    Read inode backpointer data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1166,6 +1330,9 @@ class KVINodeBackpointer(CephDataType):
 
 
 class KVFileLayout(CephDataType):
+    """
+    Read file layout information.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1184,6 +1351,9 @@ class KVFileLayout(CephDataType):
 
 
 class KVObjectInfo(CephDataType):
+    """
+    Read object info data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1207,6 +1377,9 @@ class KVObjectInfo(CephDataType):
 
 
 class KVSnapSet(CephDataType):
+    """
+    Read snapset info.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1225,6 +1398,9 @@ class KVSnapSet(CephDataType):
 
 
 class KVLock(CephDataType):
+    """
+    Read lock information.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1241,6 +1417,9 @@ class KVLock(CephDataType):
 
 
 class KVShardInfo(CephDataType):
+    """
+    Read shard info.
+    """
     def __init__(self, handle):
         self.used = False
         start = handle.tell()
@@ -1254,6 +1433,9 @@ class KVShardInfo(CephDataType):
 
 
 class KVFNode(CephDataType):
+    """
+    Read fnode data structures.
+    """
     def __init__(self, handle):
         self.dentries = {}
         start = handle.tell()
@@ -1281,6 +1463,9 @@ class KVFNode(CephDataType):
 
 
 class KVINode(CephDataType):
+    """
+    Read inode data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1331,6 +1516,9 @@ class KVINode(CephDataType):
 
 
 class CephEversion(CephDataType):
+    """
+    Read eversion data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.version = CephInteger(handle, 8).value
@@ -1347,6 +1535,9 @@ class CephEversion(CephDataType):
 
 
 class CephPGInfo(CephDataType):
+    """
+    Read pg info data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1370,6 +1561,9 @@ class CephPGInfo(CephDataType):
 
 
 class CephPGFastinfo(CephDataType):
+    """
+    Read pg fast info data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1405,6 +1599,9 @@ class CephPGFastinfo(CephDataType):
 
 
 class CephPastIntervals(CephDataType):
+    """
+    Read past intervals.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1543,6 +1740,9 @@ class CephReqID(CephDataType):
 
 
 class CephPExtent(CephDataType):
+    """
+    Read physical extent information.
+    """
     pextentlist = []
     alloc = None
     unalloc = None
@@ -1573,6 +1773,10 @@ class CephPExtent(CephDataType):
         return self.offset > other.offset
 
     def read(self, read):
+        """
+        Get a physical extent's content.
+        read: The OSD/open file.
+        """
         if not self.valid:
             raise ValueError()
         logging.debug("read pextent: %s" % str(self))

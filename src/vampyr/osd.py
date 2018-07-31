@@ -6,8 +6,8 @@ KV store in BlueFS.
 import os
 import tempfile
 import shutil
-from vampyr.cephbluefs import BlueFS
-from vampyr.cephdatatypes import CephInteger, CephFixedString,\
+from vampyr.bluefs import BlueFS
+from vampyr.datatypes import CephInteger, CephFixedString,\
     CephBlockHeader, CephUUID, CephUTime, CephString, CephStringDict
 from vampyr.kv import RDBKV, CephPExtent
 import logging

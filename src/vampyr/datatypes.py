@@ -1,8 +1,10 @@
-#!/usr/bin/python
+"""
+Defines basic data types to be used by Vampyr.
+"""
 
 import datetime
 import ctypes
-from vampyr.cephexceptions import CephUnexpectedMagicException
+from vampyr.exceptions import VampyrMagicException
 
 
 class CephDataType(object):
@@ -172,8 +174,7 @@ class CephBlockHeader(CephDataType):
         self.v = CephInteger(handle, 1).value
         self.c = CephInteger(handle, 1).value
         if self.v == 0 and self.c == 0:
-            raise CephUnexpectedMagicException("Unexpected Magic at 0x%x." %
-                                               start)
+            raise VampyrMagicException("Unexpected Magic at 0x%x." % start)
         self.blength = CephInteger(handle, 4).value
         end = handle.tell()
         super().__init__(start, end)

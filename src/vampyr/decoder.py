@@ -1,8 +1,8 @@
-from vampyr.cephdatatypes import ByteHandler, CephBlockHeader, CephUUID,\
+from vampyr.datatypes import ByteHandler, CephBlockHeader, CephUUID,\
     CephInteger, CephUTime, CephDict, CephString, CephList, CephIntegerList,\
     CephBufferlist, CephStringDict, CephIntegerPairList, CephFloat,\
     CephUnknown, CephDataType
-from vampyr.cephexceptions import CephUnexpectedMagicException
+from vampyr.exceptions import VampyrMagicException
 import datetime
 import logging
 
@@ -153,7 +153,7 @@ class CephCrush(CephDataType):
         self.magic = CephInteger(handle, 4).value
         if self.magic != 0x00010000:
             logging.error("Magic number is 0x%0x" % self.magic)
-            raise CephUnexpectedMagicException("Crush error")
+            raise VampyrMagicException("Crush error")
         self.max_buckets = CephInteger(handle, 4).value
         self.max_rules = CephInteger(handle, 4).value
         self.max_devices = CephInteger(handle, 4).value

@@ -2,10 +2,10 @@
 
 import os
 import shutil
-from vampyr.cephdatatypes import CephDataType, CephBlockHeader, CephUUID,\
+from vampyr.datatypes import CephDataType, CephBlockHeader, CephUUID,\
     CephInteger, CephUnknown, CephVarInteger, CephLBA, CephList, CephUTime,\
     CephString, CephVarIntegerLowz
-from vampyr.cephexceptions import CephUnexpectedMagicException
+from vampyr.exceptions import VampyrMagicException
 import logging
 import hashlib
 # import functools
@@ -75,7 +75,7 @@ class BlueFS(object):
                     else:
                         self.next_offset = 0
                         self.read_bluefs_transaction(thisoff)
-                except (CephUnexpectedMagicException, AssertionError) as e:
+                except (VampyrMagicException, AssertionError) as e:
                     # print(traceback.format_exc())
                     pass
                 block += 1
