@@ -9,7 +9,8 @@ from vampyr.datatypes import CephDataType, CephFixedString, CephInteger,\
     ByteHandler, CephBlockHeader, CephVarInteger, CephBufferlist, CephList,\
     CephIntegerList, CephVarIntegerLowz, CephLBA
 from vampyr.decoder import CephPG,\
-    decode_osdmap, decode_inc_osdmap, decode_osd_super
+    decode_osdmap, decode_inc_osdmap, decode_osd_super, decode_rbd_id
+from vampyr.exceptions import VampyrMagicException
 import logging
 import re
 import hashlib
@@ -52,6 +53,7 @@ class RDBKV(object):
         prefix handler.
         phandler: The prefix handler.
         """
+        logging.info("Loading datasets with prefix %s." % phandler.prefix)
         datasets = self.datasets[phandler.prefix]
         for d in sorted(datasets.keys()):
             k = ByteHandler(d)
@@ -292,7 +294,7 @@ class PrefixHandlerO(GenericPrefixHandler):
         print("-----------------------")
         print("Object List:")
         print("-----------------------")
-        print("ID            -> stripe")
+        print("Prefix        -> Object")
         print("-----------------------")
         if not fltr:
             fltr = ".*"
@@ -341,21 +343,31 @@ class PrefixHandlerO(GenericPrefixHandler):
             else:
                 stripe = ".%s" % stripe
 
-            if onode and oid == "osdmap":
-                decoded = decode_osdmap(onode, read)
-            elif onode and oid == "inc_osdmap":
-                decoded = decode_inc_osdmap(onode, read)
-            elif onode and oid == "osd_superblock":
-                decoded = decode_osd_super(onode, read)
-            elif onode and oid == "rbd_id":
-                raw = ByteHandler(onode.extract_raw(read))
-                decoded = CephString(raw).value
-            else:
+            try:
+                if onode and oid == "osdmap":
+                    decoded = decode_osdmap(onode, read)
+                elif onode and oid == "inc_osdmap":
+                    decoded = decode_inc_osdmap(onode, read)
+                elif onode and oid == "osd_superblock":
+                    decoded = decode_osd_super(onode, read)
+                elif onode and oid == "rbd_id":
+                    decoded = decode_rbd_id(onode, read)
+                else:
+                    decoded = None
+            except VampyrMagicException:
+                sys.stdout.flush()
+                logging.warn("Error decoding: %s%s" % (key.oid, stripe))
+                logging.warn("Object key: %s" % str(key))
+                logging.warn("Object onode: %s" % str(onode))
                 decoded = None
+                print("-----------------\n")
             if decoded:
                 print("Decoded: %s%s" % (key.oid, stripe))
-                print(decoded)
+                print("Object key: %s" % str(key))
+                print("Object onode: %s" % str(onode))
+                print(decoded[0])
                 print("-----------------\n")
+                sys.stdout.flush()
 
     def decode_object_data(self, read, edir, pMP, fltr):
         """
@@ -386,8 +398,8 @@ class PrefixHandlerO(GenericPrefixHandler):
             if not os.path.isdir(oedir):
                 os.makedirs(oedir)
 
-            fstripe = os.path.join(oedir, "stripe_%s" % stripe)
-            fmd5 = os.path.join(oedir, "stripe_%s.md5" % stripe)
+            fstripe = os.path.join(oedir, "object_%s" % stripe)
+            fmd5 = os.path.join(oedir, "object_%s.md5" % stripe)
             fmeta = os.path.join(oedir, "vampyrmeta_%s" % stripe)
             fslack = os.path.join(oedir, "slack_%s" % stripe)
             fdec = os.path.join(oedir, "decoded_%s" % stripe)
@@ -397,39 +409,43 @@ class PrefixHandlerO(GenericPrefixHandler):
             if onode and os.path.exists(fstripe) and \
                "_" in onode.attrs and \
                os.path.getmtime(fstripe) >= onode.attrs["_"].mtime.timestamp:
-                logging.info("Skipping stripe")
+                logging.info("Skipping object")
                 continue
 
-            if onode and oid == "osdmap":
-                decoded, raw = decode_osdmap(onode, read)
-                crush = raw['crush_raw'].value
-                if len(crush) > 0:
-                    with open(fcrush, 'wb') as f:
-                        f.write(crush)
-            elif onode and oid == "inc_osdmap":
-                decoded, raw = decode_inc_osdmap(onode, read)
-                crush = raw['crush_raw'].value
-                if len(crush) > 0:
-                    with open(fcrush, 'wb') as f:
-                        f.write(crush)
-            elif onode and oid == "osd_superblock":
-                decoded, raw = decode_osd_super(onode, read)
-            elif onode and oid == "rbd_id":
-                raw = ByteHandler(onode.extract_raw(read))
-                decoded = CephString(raw).value
-                destrel = os.path.join('..', "rbd_data.%s" % decoded)
-                destabs = os.path.join(edir, "rbd_data.%s" % decoded)
-                if not os.path.isdir(destabs):
-                    os.path.makedirs(destabs)
-                os.symlink(destrel, fdata)
-                rbd_id = os.path.join(edir,
-                                      "rbd_data.%s" % decoded,
-                                      "rbd_id_%s" % stripe)
-                with open(rbd_id, 'w') as f:
-                    pass
-            else:
-                decoded = None
-                logging.debug("Not decoding: %s" % oid)
+            try:
+                if onode and oid == "osdmap":
+                    decoded, raw = decode_osdmap(onode, read)
+                    crush = raw['crush_raw'].value
+                    if len(crush) > 0:
+                        with open(fcrush, 'wb') as f:
+                            f.write(crush)
+                elif onode and oid == "inc_osdmap":
+                    decoded, raw = decode_inc_osdmap(onode, read)
+                    crush = raw['crush_raw'].value
+                    if len(crush) > 0:
+                        with open(fcrush, 'wb') as f:
+                            f.write(crush)
+                elif onode and oid == "osd_superblock":
+                    decoded, raw = decode_osd_super(onode, read)
+                elif onode and oid == "rbd_id":
+                    decoded, raw = decode_rbd_id(onode, read)
+                    dec_rbd_id = raw['rbd_id'].value
+                    destrel = os.path.join('..', "rbd_data.%s" % dec_rbd_id)
+                    destabs = os.path.join(edir, "rbd_data.%s" % dec_rbd_id)
+                    if not os.path.isdir(destabs):
+                        os.makedirs(destabs)
+                    os.symlink(destrel, fdata)
+                    rbd_id = os.path.join(edir,
+                                          "rbd_data.%s" % dec_rbd_id,
+                                          "rbd_id_%s" % stripe)
+                    with open(rbd_id, 'w') as f:
+                        pass
+                else:
+                    decoded = None
+                    logging.debug("Not decoding: %s" % oid)
+            except VampyrMagicException:
+                decoded = 'Error while decoding.\n'
+
             if decoded is not None:
                 with open(fdec, 'w') as f:
                     f.write(decoded)
@@ -1839,6 +1855,36 @@ class CephPExtent(CephDataType):
                     read = min(amount, 0x20000000)  # Read 512M
                     w.write(r.read(read))
                     amount -= read
+
+    def analyze_unallocated(osdlength, r):
+        if not CephPExtent.alloc or not CephPExtent.unalloc:
+            CephPExtent._init_alloc_state(osdlength)
+        print("------------------------------------------------")
+        print("Empty and non-empty blocks in unallocated areas:")
+        print("------------------------------------------------")
+        print("(Blocksize is 512kiB)")
+        print("Please wait...")
+        bsize = 0x80000  # 512kiB
+        check = bsize * b'\x00'
+        empty = 0
+        nonempty = 0
+        for e in CephPExtent.unalloc:
+            logging.info("Reading address %s, length %s" %
+                         (hex(e[0]), hex(e[1])))
+            r.seek(e[0])
+            while r.tell() < e[0] + e[1]:
+                content = r.read(bsize)
+                if content == check:
+                    empty += 1
+                else:
+                    nonempty += 1
+
+        total = empty + nonempty
+        print("Total:                       %10d" % total)
+        print("Empty blocks (absolute):     %10d" % empty)
+        print("Empty blocks (percent):      %10d" % (empty / total * 100))
+        print("Non-empty blocks (absolute): %10d" % nonempty)
+        print("Non-empty blocks (percent):  %10d" % (nonempty / total * 100))
 
 
 class CephStatfs(CephDataType):

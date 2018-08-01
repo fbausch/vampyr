@@ -196,8 +196,9 @@ class OSD(object):
         Print all allocated and unallocated areas of the OSD to stdout
         in a fancy manner.
         """
-        self.read_bluestore_label()
         osdlength = self.bluestorelabel['osdlength'].value
+        # Make sure that the onodes were loaded from KV:
+        self.kv.pO
         CephPExtent.pretty_print(osdlength)
 
     def pextents_extract_unallocated(self, extractdir):
@@ -206,6 +207,16 @@ class OSD(object):
 
         extractdir: (string) The name of the directory. It must exist.
         """
-        self.read_bluestore_label()
         osdlength = self.bluestorelabel['osdlength'].value
+        # Make sure that the onodes were loaded from KV:
+        self.kv.pO
         CephPExtent.extract_unallocated(osdlength, self, extractdir)
+
+    def pextents_analyze_unallocated(self):
+        """
+        Check how many 512kB blocks of unallocated space contain just 0.
+        """
+        osdlength = self.bluestorelabel['osdlength'].value
+        # Make sure that the onodes were loaded from KV:
+        self.kv.pO
+        CephPExtent.analyze_unallocated(osdlength, self)

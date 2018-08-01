@@ -87,6 +87,7 @@ def main():
                                     "bslabel",
                                     "lspes",
                                     "xpes=",
+                                    "analyzepes",
                                     "xbfs=",
                                     "lsobjects",
                                     "decobjects",
@@ -135,6 +136,8 @@ def main():
         elif opt in ("--xpes"):
             actions_o.append("xpes")
             extractpes = arg
+        elif opt in ("--analyzepes"):
+            actions_o.append("analyzepes")
 
         elif opt in ("--lsobjects"):
             actions_o.append("lsobjects")
@@ -207,7 +210,7 @@ def main():
                 old_perc = perc
                 perc = (pos * 100) // osdlength
                 if perc != old_perc:
-                    print("Scanned %d percent of drive." % perc)
+                    print("Scanned %03d percent of drive." % perc)
                     sys.stdout.flush()
                 try:
                     d, r = decode_osdmap(None, osd)
@@ -218,6 +221,7 @@ def main():
                         f.write("Found at 0x%016x\n\n" % pos)
                         f.write(d)
                     logging.info("Found osdmap at 0x%016x" % pos)
+                    block = osd.tell() // blength
                     continue
                 except Exception:
                     pass
@@ -231,6 +235,7 @@ def main():
                         f.write("Found at 0x%016x\n\n" % pos)
                         f.write(d)
                     logging.info("Found inc_osdmap at 0x%016x" % pos)
+                    block = osd.tell() // blength
                     continue
                 except Exception:
                     pass
@@ -244,6 +249,7 @@ def main():
                         f.write("Found at 0x%016x\n\n" % pos)
                         f.write(d)
                     logging.info("Found osd_super at 0x%016x" % pos)
+                    block = osd.tell() // blength
                     continue
                 except Exception:
                     pass
@@ -273,6 +279,8 @@ def main():
             osd.pextents_pretty_print()
         if "xpes" in actions:
             osd.pextents_extract_unallocated(extractpes)
+        if "analyzepes" in actions:
+            osd.pextents_analyze_unallocated()
 
         if "lspgs" in actions:
             osd.kv.pC.pretty_print()

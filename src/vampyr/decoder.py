@@ -1,3 +1,7 @@
+"""
+Module to decode osdmaps, inc_osdmaps, osd_superblock, rbd_ids.
+"""
+
 from vampyr.datatypes import ByteHandler, CephBlockHeader, CephUUID,\
     CephInteger, CephUTime, CephDict, CephString, CephList, CephIntegerList,\
     CephBufferlist, CephStringDict, CephIntegerPairList, CephFloat,\
@@ -8,6 +12,10 @@ import logging
 
 
 class CephPG(CephDataType):
+    """
+    Reads PG data structures.
+    """
+
     def __init__(self, handle):
         if handle is None:
             self.v = 0
@@ -41,6 +49,9 @@ class CephPG(CephDataType):
 
 
 class CephEntityAddr(CephDataType):
+    """
+    Reads entity addresses. (e.g. IPs)
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.first = CephInteger(handle, 1).value
@@ -65,6 +76,9 @@ class CephEntityAddr(CephDataType):
 
 
 class CephOSDInfo(CephDataType):
+    """
+    Reads OSD info data structures.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.compat = CephInteger(handle, 1).value
@@ -84,6 +98,9 @@ class CephOSDInfo(CephDataType):
 
 
 class CephOSDXInfo(CephDataType):
+    """
+    Reads extended OSD infos.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -105,6 +122,9 @@ class CephOSDXInfo(CephDataType):
 
 
 class CephPGPool(CephDataType):
+    """
+    Reads PG pool infos.
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -148,6 +168,9 @@ class CephPGPool(CephDataType):
 
 
 class CephCrush(CephDataType):
+    """
+    Reads crush information
+    """
     def __init__(self, handle):
         start = handle.tell()
         self.magic = CephInteger(handle, 4).value
@@ -168,6 +191,9 @@ class CephCrush(CephDataType):
 
 
 class CephOSDState(CephInteger):
+    """
+    Reads the OSD state.
+    """
     flags = {0x1: "EXISTS",
              0x2: "UP",
              0x4: "AUTOOUT",
@@ -194,6 +220,15 @@ class CephOSDState(CephInteger):
 
 
 def decode_osdmap(onode, read):
+    """
+    Decode an osdmap.
+    onode: If not None, we read from the physical extents of the object.
+           If None, we read from 'read'.
+    read: The OSD/open file. If onode is None, we must be at the position
+          where the osdmap should be read from.
+
+    returns: Tuple of readable output and dictionary of values.
+    """
     if onode:
         o = ByteHandler(onode.extract_raw(read))
     else:
@@ -291,6 +326,15 @@ def decode_osdmap(onode, read):
 
 
 def decode_inc_osdmap(onode, read):
+    """
+    Decode an inc_osdmap.
+    onode: If not None, we read from the physical extents of the object.
+           If None, we read from 'read'.
+    read: The OSD/open file. If onode is None, we must be at the position
+          where the inc_osdmap should be read from.
+
+    returns: Tuple of readable output and dictionary of values.
+    """
     if onode:
         o = ByteHandler(onode.extract_raw(read))
     else:
@@ -381,6 +425,15 @@ def decode_inc_osdmap(onode, read):
 
 
 def decode_osd_super(onode, read):
+    """
+    Decode an osd_superblock.
+    onode: If not None, we read from the physical extents of the object.
+           If None, we read from 'read'.
+    read: The OSD/open file. If onode is None, we must be at the position
+          where the osd_superblock should be read from.
+
+    returns: Tuple of readable output and dictionary of values.
+    """
     if onode:
         o = ByteHandler(onode.extract_raw(read))
     else:
@@ -410,7 +463,29 @@ def decode_osd_super(onode, read):
     return _format_decode_output(h), h
 
 
+def decode_rbd_id(onode, read):
+    """
+    Decode an rbd_id.
+    onode: If not None, we read from the physical extents of the object.
+           If None, we read from 'read'.
+    read: The OSD/open file. If onode is None, we must be at the position
+          where the rbd_id should be read from.
+    """
+    if onode:
+        o = ByteHandler(onode.extract_raw(read))
+    else:
+        o = read
+    h = {}
+
+    h['rbd_id'] = CephString(o)
+
+    return _format_decode_output(h), h
+
+
 def _format_decode_output(data):
+    """
+    Format readable output.
+    """
     ret = ""
     for k, v in sorted(data.items(), key=lambda x: x[1].start):
         ret += _format_line(k, v)
@@ -427,4 +502,7 @@ def _format_decode_output(data):
 
 
 def _format_line(k, v):
+    """
+    Format a readable line.
+    """
     return "0x%08x: %20s --> %s\n" % (v.start, str(k), str(v))
