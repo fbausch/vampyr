@@ -7,7 +7,26 @@ import sys
 
 
 def usage():
-    print("help")
+    print("""
+This tool tries to rebuild file or RBD contents by putting object contents
+with the same object name prefix together.
+
+At first extract object data using Vampyr and the --xall option. Afterwards
+your directory will contain subdirectories (e.g. rbd_data.<id>) where you
+will find "object_<id>" files.
+
+Call this tool using
+vampyr-rebuild.py --dir <directory> [--blocksize <size>]
+
+Parameters:
+  --dir        A directory that contains "object_<id>" files.
+  --blocksize  The size of the objects. Defaults to 4194304 (4M).
+               If unsure, have a look at the "object_<id>" files
+               and select the largest file size you find.
+
+Output:
+You will find a file called "rebuild" in the working directory.
+""")
 
 
 def main():
@@ -50,7 +69,7 @@ def main():
     files = {}
     maxstripe = 0
     for f in os.listdir(objdir):
-        if not f.startswith("stripe_"):
+        if not f.startswith("object_"):
             continue
         if f.endswith(".md5"):
             continue
