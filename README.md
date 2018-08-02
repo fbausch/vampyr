@@ -2,7 +2,7 @@
 
 ## What is Vampyr?
 
-Vampyr is forensic tool to analyze Ceph BlueStore OSDs.
+Vampyr is a forensic tool to analyze Ceph BlueStore OSDs.
 
 ## Installation
 
