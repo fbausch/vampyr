@@ -1,0 +1,3 @@
+cf7cb266e13d815942a6902e33849ac9  ./vm911.sdb.img.bz2
+2a79a44c7455a78cf7be23e587651bff  ./vm912.sdb.img.bz2
+9d49166b9101510fffe53eab9b035905  ./vm913.sdb.img.bz2
