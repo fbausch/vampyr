@@ -729,7 +729,11 @@ class PrefixHandlerMP(GenericPrefixHandler):
             for oid, kv in sorted(self.meta_map.items(), key=lambda x: x[0]):
                 f.write("oid: %s\n" % str(oid))
                 for k, v in sorted(kv.items(), key=lambda x: x[0]):
-                    f.write("- %s: %s\n" % (str(k), str(v)))
+                    if isinstance(v, tuple):
+                        v = "(%s, %s)" % (str(v[0]), str(v[1]))
+                    else:
+                        v = str(v)
+                    f.write("- %s: %s\n" % (str(k), v))
 
         for oid, kv in sorted(self.meta_map.items(), key=lambda x: x[0]):
             if oid not in pO.oid_map:
