@@ -295,14 +295,13 @@ class BlueFSFile(object):
                (self.ino, self.size, self.mtime, extents)
 
     def mkfile(self, filename, dirname, destination, osd):
+        logging.info("Make file %s" % filename)
         destinationfull = os.path.join(destination, dirname)
         assert(os.path.isdir(destinationfull))
         filenamefull = os.path.join(destinationfull, filename)
         filenameslack = os.path.join(destinationfull, "%s_slack" % filename)
         filenamemd5 = os.path.join(destinationfull, "%s.md5" % filename)
         assert(not os.path.exists(filenamefull))
-        if len(self.extents) > 1:
-            raise NotImplementedError()
         logging.debug("create %s" % filenamefull)
         logging.debug("- size:  %d (0x%x)" % (self.size, self.size))
         logging.debug("- mtime: %s" % str(self.mtime))
@@ -318,6 +317,7 @@ class BlueFSFile(object):
             for e in self.extents:
                 o.seek(e.offset)
                 length = e.length
+                logging.info("read extent %s, bsize: 0x%x" % (str(e), bsize))
                 if bsize == 0:
                     break
                 elif bsize <= length:

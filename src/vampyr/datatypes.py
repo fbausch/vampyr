@@ -5,6 +5,7 @@ Defines basic data types to be used by Vampyr.
 import datetime
 import ctypes
 from vampyr.exceptions import VampyrMagicException
+import logging
 
 
 class CephDataType(object):
@@ -340,7 +341,8 @@ class ByteHandler(object):
         self._p = 0
 
     def __str__(self):
-        return "".join("{:02x}".format(c) for c in self.mybytes)
+        string = "".join("{:02x}".format(c) for c in self.mybytes)
+        return string[:2 * self.p] + "<___POS___>" + string[2 * self.p:]
 
     @property
     def p(self):
