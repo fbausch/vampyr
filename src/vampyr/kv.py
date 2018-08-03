@@ -631,7 +631,12 @@ class PrefixHandlerMP(GenericPrefixHandler):
             # We found CephFS directory metadata
             if v.length() == 0:
                 return
-            val = KVFNode(v)
+            val = None
+            try:
+                val = KVFNode(v)
+            except IndexError:
+                logging.warn("Skipping omap(?) with oid %d." % oid)
+                return
             self.header_map[oid] = val
             logging.debug("0x%x: %s" % (oid, self.header_map[oid]))
             if oid not in self.meta_map:
@@ -967,8 +972,12 @@ class KVObjectNameKey(CephDataType):
             self.stripe = None
             self.stripe_sort = None
         else:
-            self.oid = '.'.join(self.key.split('.')[:-1])
-            self.stripe = self.key.split('.')[-1]
+            if self.key.endswith('.inode'):
+                self.oid = '.'.join(self.key.split('.')[:-2])
+                self.stripe = '.'.join(self.key.split('.')[-2:])
+            else:
+                self.oid = '.'.join(self.key.split('.')[:-1])
+                self.stripe = self.key.split('.')[-1]
             try:
                 self.stripe_sort = int(self.stripe, 16)
             except ValueError:
@@ -1002,10 +1011,10 @@ class KVONode(CephDataType):
     """
     Reads onode data structures.
     """
-    spanning_blob_map = {}
     shared_blob_map = {}
 
     def __init__(self, handle):
+        self.spanning_blob_map = {}
         # self.blobs = []
         self.lextents = []
         start = handle.tell()
@@ -1035,6 +1044,7 @@ class KVONode(CephDataType):
         self.alloc_hint_flags = CephVarInteger(handle).value
         end = handle.tell()
         assert(end == self.header.end_offset)
+        logging.debug(str(handle))
         # Spanning blobs:
         v = CephVarInteger(handle).value
         assert(v == 2)
@@ -1042,10 +1052,8 @@ class KVONode(CephDataType):
         while n > 0:
             bid = CephVarInteger(handle).value
             b = KVBlob(handle)
-            KVONode.spanning_blob_map[bid] = b
+            self.spanning_blob_map[bid] = b
             n -= 1
-            logging.warn("spanning_blob_map")
-            logging.warn(KVONode.spanning_blob_map)
         super().__init__(start, end)
 
     def __str__(self):
@@ -1151,30 +1159,40 @@ class KVExtentMap(CephDataType):
             self.extentmap_length = CephInteger(handle, 4).value
             self.end_offset = self.extentmap_length + handle.tell()
         self.v = CephInteger(handle, 1).value
+        logging.debug(handle)
+        if self.v != 2:
+            return
         assert(self.v == 2)
         self.num = CephVarInteger(handle).value
         self.blobs = [None] * self.num
         prev_len = 0
 
         for n in range(0, self.num):
+            logging.debug("Reading n: %d" % n)
             le = self.LExtent()
 
             self.blobid = CephVarInteger(handle).value
+            logging.debug("blobid: %d" % self.blobid)
 
             if (self.blobid & KVExtentMap.CONTIGUOUS) == 0:
+                logging.debug("not CONTIGUOUS")
                 gap = CephVarIntegerLowz(handle).value
                 pos += gap
             le.logical_offset = pos
             le.blob_offset = 0
             if (self.blobid & KVExtentMap.ZEROOFFSET) == 0:
+                logging.debug("not ZEROOFFSET")
                 le.blob_offset = CephVarIntegerLowz(handle).value
 
             if (self.blobid & KVExtentMap.SAMELENGTH) == 0:
+                logging.debug("not SAMELENGTH")
                 prev_len = CephVarIntegerLowz(handle).value
             le.length = prev_len
             if (self.blobid & KVExtentMap.SPANNING) != 0:
-                raise NotImplementedError()
+                blobshift = self.blobid >> KVExtentMap.SHIFTBITS
+                le.assign_blob(onode.spanning_blob_map[blobshift])
             else:
+                logging.debug("not SPANNING")
                 self.blobid >>= KVExtentMap.SHIFTBITS
                 if self.blobid != 0:
                     le.assign_blob(self.blobs[self.blobid - 1])
@@ -1188,12 +1206,14 @@ class KVExtentMap(CephDataType):
             self.onode.lextents.append(le)
 
         end = handle.tell()
+        logging.debug(str(handle))
+        logging.debug(self)
         if not noheader:
             assert(end == self.end_offset)
         super().__init__(start, end)
 
     def __str__(self):
-        return "blobs: %s, extents: %s" %\
+        return "blobs: %s --- extents: %s" %\
                (", ".join([str(b) for b in self.blobs]),
                 ", ".join([str(e) for e in self.onode.lextents]))
 
@@ -1213,7 +1233,7 @@ class KVExtentMap(CephDataType):
                     self.length, str(self.blob))
 
         def assign_blob(self, blob):
-            assert(not self.blob)
+            assert(self.blob is None)
             self.blob = blob
 
         def read(self, read):
@@ -1242,9 +1262,12 @@ class KVBlob(CephDataType):
         self.sbid = None
         for i in range(0, self.extentsvector_num):
             pe = CephPExtent(handle)
+            logging.debug("found pe: %s" % str(pe))
             if pe.valid:
                 self.extents.append(pe)
         self.flags = CephVarInteger(handle).value
+        logging.debug("flags: 0x%x" % self.flags)
+        self.compressed_length = None
         if self.flags & KVBlob.COMPRESSED != 0:
             self.logical_length = CephVarIntegerLowz(handle).value
             self.compressed_length = CephVarIntegerLowz(handle).value
@@ -1270,6 +1293,10 @@ class KVBlob(CephDataType):
         super().__init__(start, end)
 
     def __str__(self):
+        if self.compressed_length is not None:
+            return "llength: 0x%x, clength: 0x%x, extents: %s" %\
+                   (self.logical_length, self.compressed_length,
+                    [str(e) for e in self.extents])
         return "llength: 0x%x, extents: %s" %\
                (self.logical_length, [str(e) for e in self.extents])
 
@@ -1457,6 +1484,7 @@ class KVFNode(CephDataType):
     Read fnode data structures.
     """
     def __init__(self, handle):
+        logging.debug(handle)
         self.dentries = {}
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -1766,15 +1794,19 @@ class CephPExtent(CephDataType):
     pextentlist = []
     alloc = None
     unalloc = None
-    INVALID_OFFSET = 0x7ffffffff
+    INVALID_OFFSET = 0xfffffffff
 
     def __init__(self, handle):
         start = handle.tell()
-        self.offset = CephLBA(handle).value
+        readahead = CephInteger(handle, 10).value
+        if readahead == 0x01FFFFFFFFFFFFFFFFFF:
+            self.offset = CephPExtent.INVALID_OFFSET
+            self.valid = False
+        else:
+            handle.seek(start)
+            self.offset = CephLBA(handle).value
+            self.valid = True
         self.length = CephVarIntegerLowz(handle).value
-        self.valid = self.offset != CephPExtent.INVALID_OFFSET
-        if not self.valid:
-            handle.read(1)
         end = handle.tell()
         super().__init__(start, end)
         if self.valid:
