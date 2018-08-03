@@ -5,7 +5,6 @@ Defines basic data types to be used by Vampyr.
 import datetime
 import ctypes
 from vampyr.exceptions import VampyrMagicException
-import logging
 
 
 class CephDataType(object):

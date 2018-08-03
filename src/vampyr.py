@@ -8,8 +8,6 @@ import logging
 from vampyr.osd import OSD
 from vampyr.decoder import decode_osdmap, decode_inc_osdmap, decode_osd_super
 from vampyr.kv import RDBKV
-# import functools
-# print = functools.partial(print, flush=True)
 
 
 def usage():
@@ -176,14 +174,17 @@ def main():
     if len(actions_o) > 0:
         actions = actions_o
 
+    loglvl = logging.WARN
+    logfrmt = '[%(filename)10s:%(lineno)4s - %(funcName)10s]  %(message)s'
     if loglevel and loglevel in ["INFO", "DEBUG"]:
         if loglevel == "INFO":
-            logging.basicConfig(level=logging.INFO)
-        if loglevel == "DEBUG":
-            logging.basicConfig(level=logging.DEBUG)
+            loglvl = logging.INFO
+        elif loglevel == "DEBUG":
+            loglvl = logging.DEBUG
     elif loglevel:
         usage()
         sys.exit(1)
+    logging.basicConfig(format=logfrmt, level=loglvl)
 
     logging.debug(actions)
     if "scan" in actions:
@@ -324,8 +325,23 @@ def main():
                                          osd.kv.pO, objectfilter)
             osd.kv.pP.decode_object_data(osd, allextract,
                                          osd.kv.pO, objectfilter)
+
             print("Done")
             sys.stdout.flush()
+        if loglevel == "DEBUG":
+            # Load all KV store prefixes to make sure that the parsers work:
+            print("Debug mode: load the whole KV store...")
+            sys.stdout.flush()
+            osd.kv.pO
+            osd.kv.pS
+            osd.kv.pT
+            osd.kv.pC
+            osd.kv.pM
+            osd.kv.pP
+            osd.kv.pB
+            osd.kv.pb
+            osd.kv.pL
+            osd.kv.pX
 
 
 if __name__ == "__main__":

@@ -204,7 +204,7 @@ class RDBKV(object):
         """
         PrefixHandler that holds all X-rows.
         """
-        if not self.pX:
+        if not self._pX:
             self._pX = PrefixHandlerX()
             self._load(self._pX)
         return self._pX
@@ -1044,14 +1044,15 @@ class KVONode(CephDataType):
         self.alloc_hint_flags = CephVarInteger(handle).value
         end = handle.tell()
         assert(end == self.header.end_offset)
-        logging.debug(str(handle))
+
         # Spanning blobs:
-        v = CephVarInteger(handle).value
+        v = CephInteger(handle, 1).value
         assert(v == 2)
         n = CephVarInteger(handle).value
         while n > 0:
             bid = CephVarInteger(handle).value
-            b = KVBlob(handle)
+            logging.debug("spanning blob with id: %d" % bid)
+            b = KVBlob(handle, include_ref_map=(v, True))
             self.spanning_blob_map[bid] = b
             n -= 1
         super().__init__(start, end)
@@ -1146,6 +1147,7 @@ class KVExtentMap(CephDataType):
     SHIFTBITS = 0x4
 
     def __init__(self, handle, onode, noheader=False):
+        logging.debug("noheader = %s" % str(noheader))
         self.onode = onode
         start = handle.tell()
         x = min(0x20, handle.length() - handle.tell())
@@ -1158,11 +1160,10 @@ class KVExtentMap(CephDataType):
         if not noheader:
             self.extentmap_length = CephInteger(handle, 4).value
             self.end_offset = self.extentmap_length + handle.tell()
+
         self.v = CephInteger(handle, 1).value
-        logging.debug(handle)
-        if self.v != 2:
-            return
         assert(self.v == 2)
+
         self.num = CephVarInteger(handle).value
         self.blobs = [None] * self.num
         prev_len = 0
@@ -1172,27 +1173,22 @@ class KVExtentMap(CephDataType):
             le = self.LExtent()
 
             self.blobid = CephVarInteger(handle).value
-            logging.debug("blobid: %d" % self.blobid)
 
             if (self.blobid & KVExtentMap.CONTIGUOUS) == 0:
-                logging.debug("not CONTIGUOUS")
                 gap = CephVarIntegerLowz(handle).value
                 pos += gap
             le.logical_offset = pos
             le.blob_offset = 0
             if (self.blobid & KVExtentMap.ZEROOFFSET) == 0:
-                logging.debug("not ZEROOFFSET")
                 le.blob_offset = CephVarIntegerLowz(handle).value
 
             if (self.blobid & KVExtentMap.SAMELENGTH) == 0:
-                logging.debug("not SAMELENGTH")
                 prev_len = CephVarIntegerLowz(handle).value
             le.length = prev_len
             if (self.blobid & KVExtentMap.SPANNING) != 0:
                 blobshift = self.blobid >> KVExtentMap.SHIFTBITS
                 le.assign_blob(onode.spanning_blob_map[blobshift])
             else:
-                logging.debug("not SPANNING")
                 self.blobid >>= KVExtentMap.SHIFTBITS
                 if self.blobid != 0:
                     le.assign_blob(self.blobs[self.blobid - 1])
@@ -1206,8 +1202,6 @@ class KVExtentMap(CephDataType):
             self.onode.lextents.append(le)
 
         end = handle.tell()
-        logging.debug(str(handle))
-        logging.debug(self)
         if not noheader:
             assert(end == self.end_offset)
         super().__init__(start, end)
@@ -1255,7 +1249,8 @@ class KVBlob(CephDataType):
     HAS_UNUSED = 0x8
     SHARED = 0x10
 
-    def __init__(self, handle):
+    def __init__(self, handle, include_ref_map=(2, False)):
+        logging.debug("include_ref_map = %s" % str(include_ref_map))
         start = handle.tell()
         self.extentsvector_num = CephVarInteger(handle).value
         self.extents = []
@@ -1288,6 +1283,17 @@ class KVBlob(CephDataType):
 
         if self.flags & KVBlob.SHARED != 0:
             self.sbid = CephInteger(handle, 8).value
+
+        if include_ref_map[1]:
+            assert(include_ref_map[0] > 1)
+            au_size = CephVarInteger(handle).value
+            if au_size > 0:
+                num_au = CephVarInteger(handle).value
+                if num_au == 0:
+                    total_bytes = CephVarInteger(handle).value
+                else:
+                    for i in range(0, num_au):
+                        byte_per_au = CephVarInteger(handle).value
 
         end = handle.tell()
         super().__init__(start, end)
