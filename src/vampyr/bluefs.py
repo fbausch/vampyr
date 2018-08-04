@@ -1,4 +1,7 @@
-#!/usr/bin/python3
+"""
+Module to deal with BlueFS. Locates the superblock, reads the transaction log
+and extracts files from BlueFS.
+"""
 
 import os
 import shutil
@@ -8,13 +11,16 @@ from vampyr.datatypes import CephDataType, CephBlockHeader, CephUUID,\
 from vampyr.exceptions import VampyrMagicException
 import logging
 import hashlib
-# import functools
-# print = functools.partial(print, flush=True)
 
 
 class BlueFS(object):
+    """
+    Contains the information about the BlueFS.
+    """
     def __init__(self, osd):
-
+        """
+        osd: The file handle where to read the data from.
+        """
         self.initialized = False
         self.allocated_areas = {}
         self.allocated_ino = []
@@ -52,6 +58,9 @@ class BlueFS(object):
         assert(self._validate_extent_location())
 
     def _validate_extent_location(self):
+        """
+        An exent should never be outside of the allocated BlueFS areas.
+        """
         for e in self.allocated_extents:
             match = False
             for a in self.allocated_areas.values():
@@ -91,7 +100,7 @@ class BlueFS(object):
         h['uuid'] = CephUUID(handle)
         assert(h['uuid'] == self.superblock.data['uuid'])
         h['seq'] = CephInteger(handle, 8).value
-        h['transaction'] = BlueFSTransactionList(handle, self)
+        h['transaction'] = BlueFSTransaction(handle, self)
         h['crc'] = CephInteger(handle, 4)
         assert(handle.tell() == h['header'].end_offset)
         h['unknown'] = CephUnknown(handle, 0x10)
@@ -434,14 +443,14 @@ class BlueFSExtent(CephDataType):
         return self.offset == other.offset
 
 
-class BlueFSTransactionList(CephDataType):
+class BlueFSTransaction(CephDataType):
     def __init__(self, handle, bluefs):
         start = handle.tell()
         self.transactions = []
         self.structlen = CephInteger(handle, 4).value
         end_offset = handle.tell() + self.structlen
         while handle.tell() < end_offset:
-            t = BlueFSTransaction(handle, bluefs)
+            t = BlueFSOperation(handle, bluefs)
             self.transactions.append(t)
         end = handle.tell()
         assert(end == end_offset)
@@ -451,10 +460,10 @@ class BlueFSTransactionList(CephDataType):
         return " | ".join(str(x) for x in self.transactions)
 
 
-class BlueFSTransaction(CephDataType):
+class BlueFSOperation(CephDataType):
     def __init__(self, handle, bluefs):
         start = handle.tell()
-        self.op = BlueFSOP(handle)
+        self.op = BlueFSOperationCode(handle)
         op = self.op.value
 
         if op == 0:
@@ -531,7 +540,7 @@ class BlueFSTransaction(CephDataType):
         return "OP: %s, %s" % (str(self.op), self.hint)
 
 
-class BlueFSOP(CephInteger):
+class BlueFSOperationCode(CephInteger):
     translation_map = ["NONE", "INIT", "ALLOC_ADD", "ALLOC_RM",
                        "DIR_LINK", "DIR_UNLINK", "DIR_CREATE",
                        "DIR_REMOVE", "FILE_UPDATE", "FILE_REMOVE",
@@ -541,4 +550,4 @@ class BlueFSOP(CephInteger):
         super().__init__(handle, 1)
 
     def __str__(self):
-        return BlueFSOP.translation_map[self.value]
+        return BlueFSOperationCode.translation_map[self.value]
