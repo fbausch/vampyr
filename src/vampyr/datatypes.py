@@ -8,6 +8,10 @@ from vampyr.exceptions import VampyrMagicException
 
 
 class CephDataType(object):
+    """
+    Class to inherit from when implementing a class that can decode
+    data from Ceph/BlueStore/BlueFS/KV store.
+    """
     def __init__(self, start, end):
         self.start = start
         self.end = end
@@ -17,7 +21,19 @@ class CephDataType(object):
 
 
 class CephDict(CephDataType):
+    """
+    Decodes dict data types.
+    """
     def __init__(self, handle, cls1, len1, cls2, len2):
+        """
+        handle: File handle to read from.
+        cls1: CephDataType class that decodes the keys
+        len1: The number of bytes to read, None for data types that don't take
+              a length.
+        cls2: CephDataType class that decodes the values
+        len2: The number of bytes to read, None for data types that don't take
+              a length.
+        """
         start = handle.tell()
         self.elements = {}
         self.num_elements = CephInteger(handle, length=4).value
@@ -40,7 +56,16 @@ class CephDict(CephDataType):
 
 
 class CephList(CephDataType, list):
+    """
+    Decodes list data types.
+    """
     def __init__(self, handle, cls1, len1):
+        """
+        handle: File handle to read from.
+        cls1: CephDataType class that decodes the list elements.
+        len1: The number of bytes to read, None for data types that don't take
+              a length.
+        """
         start = handle.tell()
         self.num_elements = CephInteger(handle, 4).value
         self.elements = []
@@ -71,17 +96,43 @@ class CephList(CephDataType, list):
 
 
 class CephIntegerList(CephList):
+    """
+    Decodes lists of integers.
+    """
     def __init__(self, handle, length):
+        """
+        handle: File handle to read from.
+        length: The number of bytes in the integer.
+        """
         super().__init__(handle, CephInteger, length)
 
 
 class CephIntegerPairList(CephList):
+    """
+    Decodes lists of integer pairs.
+    """
     def __init__(self, handle, length):
+        """
+        handle: File handle to read from.
+        length: The number of bytes in the integers
+        """
         super().__init__(handle, CephIntegerPair, length)
 
 
 class CephPair(CephDataType):
+    """
+    Decodes pair data types.
+    """
     def __init__(self, handle, cls1, len1, cls2, len2):
+        """
+        handle: File handle to read from.
+        cls1: CephDataType class that decodes the first element.
+        len1: The number of bytes to read, None for data types that don't take
+              a length.
+        cls2: CephDataType class that decodes the second element.
+        len2: The number of bytes to read, None for data types that don't take
+              a length.
+        """
         start = handle.tell()
         if len1:
             value = cls1(handle, length=len1)
@@ -101,12 +152,28 @@ class CephPair(CephDataType):
 
 
 class CephIntegerPair(CephPair):
+    """
+    Decodes a pairs of integeres.
+    """
     def __init__(self, handle, length):
+        """
+        handle: File handle to read from.
+        length: The number of bytes in the integers.
+        """
         super().__init__(handle, CephInteger, length, CephInteger, length)
 
 
 class CephString(CephDataType):
+    """
+    Decodes strings.
+    """
     def __init__(self, handle, len_length=4):
+        """
+        handle: File handle to read from.
+        len_length: The number of bytes of the integer that hold
+                    the length of the string. Defaults to 4 and we
+                    never saw another value.
+        """
         start = handle.tell()
         self.len_length = len_length
         str_length = handle.read(self.len_length)
@@ -120,7 +187,16 @@ class CephString(CephDataType):
 
 
 class CephFixedString(CephDataType):
+    """
+    Decodes strings that are not preceded by an integer that tells
+    us the number of characters in the string. So we need to know
+    the length.
+    """
     def __init__(self, handle, length):
+        """
+        handle: File handle to read from.
+        length: The number of bytes/characters in the string.
+        """
         start = handle.tell()
         self.length = length
         self.value = handle.read(self.length).decode("utf-8")
@@ -132,7 +208,15 @@ class CephFixedString(CephDataType):
 
 
 class CephUTime(CephDataType):
+    """
+    Decodes utime data structures.
+    It consists of the property timestamp (the UNIX timestamp)
+    and the property nanosec (the nanoseconds within timestamp).
+    """
     def __init__(self, handle):
+        """
+        handle: File handle to read from.
+        """
         start = handle.tell()
         self.timestamp = CephInteger(handle, 4).value
         self.nanosec = CephInteger(handle, 4).value
@@ -146,7 +230,16 @@ class CephUTime(CephDataType):
 
 
 class CephInteger(CephDataType):
+    """
+    Decodes an integer.
+    """
     def __init__(self, handle, length, byteorder='little'):
+        """
+        handle: File handle to read from.
+        length: The number of bytes in the integer.
+        byteorder: little or big. Integers in the KV are often big, but
+                   usually little (the default) is the right choice.
+        """
         start = handle.tell()
         self.value = int.from_bytes(handle.read(length), byteorder=byteorder)
         end = handle.tell()
@@ -169,7 +262,20 @@ class CephInteger(CephDataType):
 
 
 class CephBlockHeader(CephDataType):
+    """
+    Decodes block headers that tell us about the following
+    data structures.
+    The property v will contain the encoder version.
+    The property c will contain the minimal decoder version.
+    The property blength will contain the number of bytes in the
+    following data structure.
+    The property end_offset will contain the offset were the next
+    data structure begins.
+    """
     def __init__(self, handle):
+        """
+        handle: File handle to read from.
+        """
         start = handle.tell()
         self.v = CephInteger(handle, 1).value
         self.c = CephInteger(handle, 1).value
@@ -186,7 +292,13 @@ class CephBlockHeader(CephDataType):
 
 
 class CephVarInteger(CephDataType):
+    """
+    Decodes a varint integer.
+    """
     def __init__(self, handle):
+        """
+        handle: File handle to read from.
+        """
         start = handle.tell()
         highbit = 1
         shift = 0
@@ -209,7 +321,13 @@ class CephVarInteger(CephDataType):
 
 
 class CephVarIntegerLowz(CephVarInteger):
+    """
+    Decodes a varint with low-zero encoding.
+    """
     def __init__(self, handle):
+        """
+        handle: File handle to read from.
+        """
         super().__init__(handle)
         lowznib = self.value & 3
         self.value = self.value >> 2
@@ -217,7 +335,13 @@ class CephVarIntegerLowz(CephVarInteger):
 
 
 class CephLBA(CephDataType):
+    """
+    Decodes an LBA integer.
+    """
     def __init__(self, handle):
+        """
+        handle: File handle to read from.
+        """
         start = handle.tell()
         shift = 0
         # v = 0
@@ -255,7 +379,14 @@ class CephLBA(CephDataType):
 
 
 class CephFloat(CephDataType):
+    """
+    Decodes a float.
+    """
     def __init__(self, handle, length=32):
+        """
+        handle: File handle to read from.
+        length: The number of bytes in the float. Should be 32 (the default).
+        """
         start = handle.tell()
         self.value = ctypes.c_double.from_buffer_copy(handle.read(length))
         end = handle.tell()
@@ -266,7 +397,13 @@ class CephFloat(CephDataType):
 
 
 class CephUUID(CephDataType):
+    """
+    Decodes a UUID.
+    """
     def __init__(self, handle):
+        """
+        handle: File handle to read from.
+        """
         start = handle.tell()
         self.value = handle.read(0x10)
         end = handle.tell()
@@ -287,7 +424,20 @@ class CephUUID(CephDataType):
 
 
 class CephBufferlist(CephDataType):
+    """
+    Reads a Bufferlist.
+    The property length will contain the number of bytes in the bufferlist.
+    The property value will contain the bytes of the bufferlist.
+    The property raw will contain a ByteHandler containing the value so that
+    it can be easily used as input for CephDataType decoders.
+    """
     def __init__(self, handle, len_length=4):
+        """
+        handle: File handle to read from.
+        len_length: The number of bytes in the integer that tell us the length
+                    of the bufferlist. Defaults to 4 - this should always be
+                    correct.
+        """
         start = handle.tell()
         self.len_length = len_length
         self.length = CephInteger(handle, self.len_length).value
@@ -300,11 +450,22 @@ class CephBufferlist(CephDataType):
         return "Bufferlist of length %d (0x%x)" % (self.length, self.length)
 
     def print_value(self):
+        """
+        Returns the value property as hex dump.
+        """
         return "".join("{:02x}".format(c) for c in self.value)
 
 
 class CephUnknown(CephDataType):
+    """
+    Reads a number of bytes where we don't know what their exact meaning is.
+    The property value will contain the bytes read.
+    """
     def __init__(self, handle, length):
+        """
+        handle: File handle to read from.
+        length: The number of bytes to read.
+        """
         start = handle.tell()
         self.value = handle.read(length)
         end = handle.tell()
@@ -315,7 +476,13 @@ class CephUnknown(CephDataType):
 
 
 class CephStringDict(CephDict):
+    """
+    Decodes a dict that contains strings as keys and values.
+    """
     def __init__(self, handle):
+        """
+        handle: File handle to read from.
+        """
         super().__init__(handle, CephString, None,
                          CephString, None)
 
@@ -328,6 +495,12 @@ class CephStringDict(CephDict):
 
 
 class ByteHandler(object):
+    """
+    Wraps byte arrays so that they can be consumed like file handles.
+    Because of this a ByteHandler object can be used as input for CephDataType
+    classes.
+    It provides read(), tell(), and seek().
+    """
     def __init__(self, mybytes):
         if isinstance(mybytes, str):
             blist = []
@@ -355,20 +528,38 @@ class ByteHandler(object):
         self._p = value
 
     def read(self, length):
+        """
+        Reads and returns the next *length* bytes of the byte array.
+        Will throw an exception if we try to read over the end of
+        the array.
+        """
         r = self.mybytes[self.p:self.p + length]
         self.p += length
         return r
 
     def seek(self, pos):
+        """
+        Goes to position *pos* in the byte array. Will throw an
+        exception if the position is behind the end of the array.
+        """
         self.p = pos
 
     def tell(self):
+        """
+        Returns the current position in the byte array.
+        """
         return self.p
 
     def length(self):
+        """
+        Number of bytes in the array.
+        """
         return len(self.mybytes)
 
     def end(self):
+        """
+        Returns True if we are at the end of the array.
+        """
         return self.p >= self.length()
 
     def __len__(self):

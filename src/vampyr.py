@@ -61,6 +61,9 @@ OPTIONS:
 --xbfs <DIR>  Extract BlueFS content to this directory.
 --lspes       List physical extents, allocated and non-allocated.
 --xpes <DIR>  Extract unallocated physical extents to this directory.
+--analyzepes  Looks at all unallocated areas of the OSD and will check
+              how many 512 KiB blocks are actually empty (filles with 0)
+              and how many contain data.
 --lsobjects   List objects. (See also --objfilter.)
 --decobjects  Print decoded objects. (See also --objfilter.)
 --objfilter   A regex to filter object names. Only objects matching

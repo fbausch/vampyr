@@ -399,7 +399,7 @@ class PrefixHandlerO(GenericPrefixHandler):
                 os.makedirs(oedir)
 
             fstripe = os.path.join(oedir, "object_%s" % stripe)
-            fmd5 = os.path.join(oedir, "object_%s.md5" % stripe)
+            fmd5 = os.path.join(oedir, "md5_object_%s" % stripe)
             fmeta = os.path.join(oedir, "vampyrmeta_%s" % stripe)
             fslack = os.path.join(oedir, "slack_%s" % stripe)
             fdec = os.path.join(oedir, "decoded_%s" % stripe)
