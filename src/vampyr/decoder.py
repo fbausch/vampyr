@@ -482,6 +482,33 @@ def decode_rbd_id(onode, read):
     return _format_decode_output(h), h
 
 
+def decode_mds_inotable(onode, read):
+    """
+    Decode an mds_inotable.
+    onode: If not None, we read from the physical extents of the object.
+           If None, we read from 'read'.
+    read: The OSD/open file. If onode is None, we must be at the position
+          where the osd_superblock should be read from.
+
+    returns: Tuple of readable output and dictionary of values.
+    """
+    if onode:
+        o = ByteHandler(onode.extract_raw(read))
+    else:
+        o = read
+    h = {}
+
+    # start = o.tell()
+    h['version'] = CephInteger(o, 8)
+    h['header'] = CephBlockHeader(o)
+    assert(h['header'].blength < 0x100000)
+    h['free'] = CephIntegerPairList(o, 8)
+    assert(o.tell() == h['header'].end_offset)
+    # end = o.tell()
+
+    return _format_decode_output(h), h
+
+
 def _format_decode_output(data):
     """
     Format readable output.

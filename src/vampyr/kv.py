@@ -9,7 +9,8 @@ from vampyr.datatypes import CephDataType, CephFixedString, CephInteger,\
     ByteHandler, CephBlockHeader, CephVarInteger, CephBufferlist, CephList,\
     CephIntegerList, CephVarIntegerLowz, CephLBA
 from vampyr.decoder import CephPG,\
-    decode_osdmap, decode_inc_osdmap, decode_osd_super, decode_rbd_id
+    decode_osdmap, decode_inc_osdmap, decode_osd_super, decode_rbd_id,\
+    decode_mds_inotable
 from vampyr.exceptions import VampyrMagicException
 import logging
 import re
@@ -352,6 +353,8 @@ class PrefixHandlerO(GenericPrefixHandler):
                     decoded = decode_osd_super(onode, read)
                 elif onode and oid == "rbd_id":
                     decoded = decode_rbd_id(onode, read)
+                elif onode and re.match("mds[0-9]+_inotable", oid):
+                    decoded = decode_mds_inotable(onode, read)
                 else:
                     decoded = None
             except VampyrMagicException:
@@ -440,6 +443,8 @@ class PrefixHandlerO(GenericPrefixHandler):
                                           "rbd_id_%s" % stripe)
                     with open(rbd_id, 'w') as f:
                         pass
+                elif onode and re.match("mds[0-9]+_inotable", oid):
+                    decoded, raw = decode_mds_inotable(onode, read)
                 else:
                     decoded = None
                     logging.debug("Not decoding: %s" % oid)
@@ -979,7 +984,10 @@ class KVObjectNameKey(CephDataType):
                 self.oid = '.'.join(self.key.split('.')[:-1])
                 self.stripe = self.key.split('.')[-1]
             try:
-                self.stripe_sort = int(self.stripe, 16)
+                if self.key.endswith('.inode'):
+                    self.stripe_sort = int(self.stripe.split('.')[0])
+                else:
+                    self.stripe_sort = int(self.stripe, 16)
             except ValueError:
                 self.stripe_sort = self.stripe
 
