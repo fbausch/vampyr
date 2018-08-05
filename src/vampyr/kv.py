@@ -10,7 +10,7 @@ from vampyr.datatypes import CephDataType, CephFixedString, CephInteger,\
     CephIntegerList, CephVarIntegerLowz, CephLBA
 from vampyr.decoder import CephPG,\
     decode_osdmap, decode_inc_osdmap, decode_osd_super, decode_rbd_id,\
-    decode_mds_inotable
+    decode_mds_inotable, decode_journal
 from vampyr.exceptions import VampyrMagicException
 import logging
 import re
@@ -355,6 +355,8 @@ class PrefixHandlerO(GenericPrefixHandler):
                     decoded = decode_rbd_id(onode, read)
                 elif onode and re.match("mds[0-9]+_inotable", oid):
                     decoded = decode_mds_inotable(onode, read)
+                elif onode and oid == "200" and key.stripe_sort != 0:
+                    decoded = decode_journal(onode, read)
                 else:
                     decoded = None
             except VampyrMagicException:
@@ -397,7 +399,10 @@ class PrefixHandlerO(GenericPrefixHandler):
             if stripe is None:
                 stripe = ""
 
-            oedir = os.path.join(edir, oid)
+            if not key.oid or len(key.oid) == 0:
+                oedir = os.path.join(edir, "nooid")
+            else:
+                oedir = os.path.join(edir, oid)
             if not os.path.isdir(oedir):
                 os.makedirs(oedir)
 
@@ -445,6 +450,8 @@ class PrefixHandlerO(GenericPrefixHandler):
                         pass
                 elif onode and re.match("mds[0-9]+_inotable", oid):
                     decoded, raw = decode_mds_inotable(onode, read)
+                elif onode and oid == "200" and key.stripe_sort != 0:
+                    decoded, raw = decode_journal(onode, read)
                 else:
                     decoded = None
                     logging.debug("Not decoding: %s" % oid)

@@ -219,6 +219,114 @@ class CephOSDState(CephInteger):
         return "0x%04x (%s)" % (self.value, ", ".join(hints))
 
 
+class CephFSLogEntry(CephDataType):
+    """
+    Reads crush information
+    """
+    def __init__(self, handle):
+        start = handle.tell()
+        self.length = CephInteger(handle, 4).value
+        self.type = CephFSLogEventType(handle)
+        logging.error(str(self.type))
+        assert(self.type.value == 0)  # We only understand new encoding
+        self.header2 = CephBlockHeader(handle)
+        assert(self.header2.v == 1)
+        self.type2 = CephFSLogEventType(handle)
+        if self.type2.value == 20:  # Update operation:
+            self.log_entry = CephFSLogEntryUpdate(handle)
+        else:
+            self.log_entry = "<Not Implemented>"
+            handle.seek(start + self.length + 4)
+        end = handle.tell()
+        assert(end == start + self.length + 4)
+        super().__init__(start, end)
+
+    def __str__(self):
+        return "%s" % str(self.log_entry)
+
+
+class CephFSLogEntryUpdate(CephDataType):
+    """
+    Reads crush information
+    """
+    def __init__(self, handle):
+        start = handle.tell()
+        self.header = CephBlockHeader(handle)
+        if self.header.v >= 2:
+            self.stamp = CephUTime(handle)
+        else:
+            self.stamp = ""
+        self.type = CephString(handle).value
+        self.metablob = CephFSLogMetaBlob(handle)
+        self.client_map = CephBufferlist(handle)
+        if self.header.v >= 3:
+            self.cmapv = CephInteger(handle, 8).value
+        else:
+            self.cmapv = 0
+        self.reqid_name = CephUnknown(handle, 6)
+        self.reqid_tid = CephInteger(handle, 8).value
+        self.had_slaves = CephInteger(handle, 4).value
+        end = handle.tell()
+        logging.error(end)
+        logging.error(self.header.end_offset)
+        assert(end == self.header.end_offset)
+        super().__init__(start, end)
+
+    def __str__(self):
+        return "CephFSLogEntry: type %s" % self.type
+
+
+class CephFSLogMetaBlob(CephDataType):
+    """
+    Reads crush information
+    """
+    def __init__(self, handle):
+        start = handle.tell()
+        self.header = CephBlockHeader(handle)
+        handle.seek(self.header.end_offset)
+        end = handle.tell()
+        assert(end == self.header.end_offset)
+        super().__init__(start, end)
+
+    def __str__(self):
+        return "Metablob"
+
+
+class CephFSLogEventType(CephInteger):
+    """
+    Reads the CephFS Log Event type.
+    """
+    flags = {0: "NEW_ENECODING",
+             1: "UNUSED",
+             2: "SUBTREEMAP",
+             3: "EXPORT",
+             4: "IMPORTSTART",
+             5: "IMPORTFINISHED",
+             6: "FRAGMENT",
+             9: "RESETJOURNAL",
+             10: "SESSION",
+             11: "SESSIONS_OLD",
+             12: "SESSIONS",
+             20: "UPDATE",
+             21: "SLAVEUPDATE",
+             22: "OPEN",
+             23: "COMMITTED",
+             42: "TABLECLIENT",
+             43: "TABLESERVER",
+             50: "SUBTREEMAP_TEST",
+             51: "NOOP"}
+
+    def __init__(self, handle):
+        super().__init__(handle, 4)
+
+    def __str__(self):
+        if self.value not in self.flags:
+            hint = "<INVALID OP CODE>"
+        else:
+            hint = "EVENT_%s" % self.flags[self.value]
+        return "%d (%s)" % (self.value, hint)
+
+
 def decode_osdmap(onode, read):
     """
     Decode an osdmap.
@@ -506,6 +614,36 @@ def decode_mds_inotable(onode, read):
     assert(o.tell() == h['header'].end_offset)
     # end = o.tell()
 
+    return _format_decode_output(h), h
+
+
+def decode_journal(onode, read):
+    """
+    Decode an mds_inotable.
+    onode: If not None, we read from the physical extents of the object.
+           If None, we read from 'read'.
+    read: The OSD/open file. If onode is None, we must be at the position
+          where the osd_superblock should be read from.
+
+    returns: Tuple of readable output and dictionary of values.
+    """
+    if onode:
+        o = ByteHandler(onode.extract_raw(read))
+    else:
+        o = read
+    h = {}
+
+    count = 0
+    while True:
+        if o.tell() + 8 + 4 > o.length():
+            break
+        sentinel = CephInteger(o, 8)
+        if sentinel.value != 0x3141592653589793:
+            break
+        h['sentinel%08x' % count] = sentinel
+        h['entry%08x' % count] = CephFSLogEntry(o)
+        h['end%08x' % count] = CephInteger(o, 8)
+        count += 1
     return _format_decode_output(h), h
 
 
