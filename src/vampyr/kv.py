@@ -35,7 +35,6 @@ class RDBKV(object):
         workingdir: The path to a RocksDB database.
         """
         self.wdir = workingdir
-        self.pools = {}
         self._datasets = None
         self._pO = None
         self._pS = None
@@ -644,13 +643,14 @@ class PrefixHandlerMP(GenericPrefixHandler):
             if v.length() == 0:
                 return
             val = None
+            pos = v.tell()
             try:
                 val = KVFNode(v)
+                self.header_map[oid] = val
+                logging.debug("0x%x: %s" % (oid, self.header_map[oid]))
             except IndexError:
-                logging.warn("Skipping omap(?) with oid %d." % oid)
-                return
-            self.header_map[oid] = val
-            logging.debug("0x%x: %s" % (oid, self.header_map[oid]))
+                v.seek(pos)
+                val = CephSessionMapStoreHeader(v)
             if oid not in self.meta_map:
                 self.meta_map[oid] = {}
             self.meta_map[oid]["-"] = val
@@ -667,10 +667,11 @@ class PrefixHandlerMP(GenericPrefixHandler):
         elif key.endswith("_head"):  # dentry
             if read:
                 fnode = self.header_map[oid]
-                v.read(8)
+                snapid = CephInteger(v, 8).value  # Entry valid for this snap
                 ntype = v.read(1)
                 if ntype == b'I':
                     val = KVINode(v)
+                    val.snapid = snapid
                 else:
                     raise NotImplementedError()
                 fname = key[:-5]
@@ -1578,10 +1579,11 @@ class KVINode(CephDataType):
         end = handle.tell()
         assert(end == self.header.end_offset)
         super().__init__(start, end)
+        self.snapid = None
 
     def __str__(self):
-        return "inode: 0x%x, size: %d, rdev: %d, ctime: %s, mode: %o, uid: %d, gid: %d, nlink: %d, dir_layout: 0x%x" %\
-               (self.inode, self.size, self.rdev, self.ctime, self.mode, self.uid, self.gid, self.nlink, self.dir_layout)
+        return "inode: 0x%x, size: %d, rdev: %d, ctime: %s, mode: %o, uid: %d, gid: %d, nlink: %d, dir_layout: 0x%x, valid for snap: 0x%x" %\
+               (self.inode, self.size, self.rdev, self.ctime, self.mode, self.uid, self.gid, self.nlink, self.dir_layout, self.snapid)
 
 
 class CephEversion(CephDataType):
@@ -1998,3 +2000,18 @@ class CephNestInfo(CephDataType):
     def __str__(self):
         return "rbytes: %d, rfiles: %d, rsubdirs: %d, rctime: %s" %\
                (self.rbytes, self.rfiles, self.rsubdirs, self.rctime)
+
+
+class CephSessionMapStoreHeader(CephDataType):
+    def __init__(self, handle):
+        start = handle.tell()
+        self.header = CephBlockHeader(handle)
+        assert(self.header.v == 1 and self.header.c == 1)
+        self.version = CephInteger(handle, 8).value
+        end = handle.tell()
+        assert(end == self.header.end_offset)
+        super().__init__(start, end)
+
+    def __str__(self):
+        return "Session Map Store Header, version: 0x%x" %\
+               (self.version)

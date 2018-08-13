@@ -178,7 +178,7 @@ def main():
         actions = actions_o
 
     loglvl = logging.WARN
-    logfrmt = '[%(filename)10s:%(lineno)4s - %(funcName)10s]  %(message)s'
+    logfrmt = '[%(levelname)s:%(filename)10s:%(lineno)4s - %(funcName)10s]  %(message)s'
     if loglevel and loglevel in ["INFO", "DEBUG"]:
         if loglevel == "INFO":
             loglvl = logging.INFO

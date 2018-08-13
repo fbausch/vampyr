@@ -227,7 +227,6 @@ class CephFSLogEntry(CephDataType):
         start = handle.tell()
         self.length = CephInteger(handle, 4).value
         self.type = CephFSLogEventType(handle)
-        logging.error(str(self.type))
         assert(self.type.value == 0)  # We only understand new encoding
         self.header2 = CephBlockHeader(handle)
         assert(self.header2.v == 1)
@@ -235,7 +234,7 @@ class CephFSLogEntry(CephDataType):
         if self.type2.value == 20:  # Update operation:
             self.log_entry = CephFSLogEntryUpdate(handle)
         else:
-            self.log_entry = "<Not Implemented>"
+            self.log_entry = "<Not Implemented %s>" % str(self.type)
             handle.seek(start + self.length + 4)
         end = handle.tell()
         assert(end == start + self.length + 4)
@@ -267,8 +266,6 @@ class CephFSLogEntryUpdate(CephDataType):
         self.reqid_tid = CephInteger(handle, 8).value
         self.had_slaves = CephInteger(handle, 4).value
         end = handle.tell()
-        logging.error(end)
-        logging.error(self.header.end_offset)
         assert(end == self.header.end_offset)
         super().__init__(start, end)
 

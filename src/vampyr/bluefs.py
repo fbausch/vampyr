@@ -446,18 +446,18 @@ class BlueFSExtent(CephDataType):
 class BlueFSTransaction(CephDataType):
     def __init__(self, handle, bluefs):
         start = handle.tell()
-        self.transactions = []
+        self.operations = []
         self.structlen = CephInteger(handle, 4).value
         end_offset = handle.tell() + self.structlen
         while handle.tell() < end_offset:
             t = BlueFSOperation(handle, bluefs)
-            self.transactions.append(t)
+            self.operations.append(t)
         end = handle.tell()
         assert(end == end_offset)
         super().__init__(start, end)
 
     def __str__(self):
-        return " | ".join(str(x) for x in self.transactions)
+        return " | ".join(str(x) for x in self.operations)
 
 
 class BlueFSOperation(CephDataType):
