@@ -663,6 +663,7 @@ class PrefixHandlerMP(GenericPrefixHandler):
             val = None
         read = v.length() != 0
         if key == "may_include_deletes_in_missing":
+            assert(v.length() == 0)
             val = True
         elif key.endswith("_head"):  # dentry
             if read:
@@ -716,6 +717,10 @@ class PrefixHandlerMP(GenericPrefixHandler):
                 val = CephPGFastinfo(v)
         elif key.startswith("missing/"):
             assert(v.length() == 0)
+            val = True
+        elif key.startswith("client."):
+            assert(v.length() == 0)
+            val = True
         else:
             logging.error("Error: %x,%s" % (oid, key))
             val = v
