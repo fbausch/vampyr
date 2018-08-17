@@ -54,7 +54,10 @@ class RDBKV(object):
         phandler: The prefix handler.
         """
         logging.info("Loading datasets with prefix %s." % phandler.prefix)
-        datasets = self.datasets[phandler.prefix]
+        datasets = self.datasets.pop(phandler.prefix, None)
+        # We pop the datasets because we don't need it anymore after parsing
+        if not datasets:
+            return
         for d in sorted(datasets.keys()):
             k = ByteHandler(d)
             v = ByteHandler(datasets[d][0])
@@ -88,6 +91,7 @@ class RDBKV(object):
         if proc.returncode != 0:
             logging.error("Could not get content of KV store.")
             logging.error("Returncode was %d." % proc.returncode)
+            logging.error(e)
             return self._datasets
         regex = "^'([0-9A-F]+)' seq:([0-9]+), type:([0-9]+) => ([0-9A-F]*)$"
         regex = re.compile(regex)

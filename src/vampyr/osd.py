@@ -40,6 +40,8 @@ class OSD(object):
         self.rb = open(self.osdpath, 'rb')
 
         self._bluestorelabel = None
+        self._read_bluestore_label()
+
         self.extract_dir = None
 
         if initkv:

@@ -34,6 +34,7 @@ class BlueFS(object):
 
         o = osd
         self.superblock = BlueFSSuperblock(o)
+        assert(self.superblock.data['osd_uuid'] == osd.bluestorelabel['uuid'])
         self.ino_to_file_map[self.superblock.data['log_fnode'].ino] =\
             BlueFSFile(self.superblock.data['log_fnode'].ino,
                        self.superblock.data['log_fnode'].size,

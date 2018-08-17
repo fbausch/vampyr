@@ -324,8 +324,8 @@ def main():
                                          osd.kv.pO, objectfilter)
             print("Almost done...")
             sys.stdout.flush()
-            osd.kv.pM.decode_object_data(osd, allextract,
-                                         osd.kv.pO, objectfilter)
+            # osd.kv.pM.decode_object_data(osd, allextract,
+            #                              osd.kv.pO, objectfilter)
             osd.kv.pP.decode_object_data(osd, allextract,
                                          osd.kv.pO, objectfilter)
 
