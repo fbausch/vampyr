@@ -5,7 +5,7 @@ Module to decode osdmaps, inc_osdmaps, osd_superblock, rbd_ids.
 from vampyr.datatypes import ByteHandler, CephBlockHeader, CephUUID,\
     CephInteger, CephUTime, CephDict, CephString, CephList, CephIntegerList,\
     CephBufferlist, CephStringDict, CephIntegerPairList, CephFloat,\
-    CephUnknown, CephDataType
+    CephUnknown, CephDataType, CephIntegerPair
 from vampyr.exceptions import VampyrMagicException
 import datetime
 import logging
@@ -466,7 +466,7 @@ def decode_inc_osdmap(onode, read):
         end = h['fullmap_raw'].end
         logging.info("Start: %s" % hex(start))
         logging.info("End: %s" % hex(end))
-        logging.info("Fullmap %s" % h['fullmap_raw'].print_value())
+        #  logging.info("Fullmap %s" % h['fullmap_raw'].print_value())
         o.seek(start)
         fullmap = decode_osdmap(None, o)[1]
         for k in fullmap:
@@ -478,7 +478,7 @@ def decode_inc_osdmap(onode, read):
         end = h['crush_raw'].end
         logging.info("Start: %s" % hex(start))
         logging.info("End: %s" % hex(end))
-        logging.info("Crush %s" % h['crush_raw'].print_value())
+        #  logging.info("Crush %s" % h['crush_raw'].print_value())
         o.seek(start)
         h['crush'] = CephCrush(o)
         o.seek(end)
@@ -519,7 +519,39 @@ def decode_inc_osdmap(onode, read):
 
     h['osd_only_header'] = CephBlockHeader(o)
     assert(h['osd_only_header'].blength < 0x100000)
-    o.seek(h['osd_only_header'].end_offset)  # TODO
+    v = h['osd_only_header'].v
+    h['new_hb_back_up'] = CephDict(o, CephInteger, 4, CephEntityAddr, None)
+    h['new_up_thru'] = CephDict(o, CephInteger, 4, CephInteger, 4)
+    h['new_last_clean_interval'] = CephDict(o, CephInteger, 4,
+                                            CephIntegerPair, 4)
+    h['new_lost'] = CephDict(o, CephInteger, 4, CephInteger, 4)
+    h['new_blacklist'] = CephDict(o, CephEntityAddr, None, CephUTime, None)
+    h['osd_blacklist'] = CephList(o, CephEntityAddr, None)
+    h['new_up_cluster'] = CephDict(o, CephInteger, 4, CephEntityAddr, None)
+    h['cluster_snapshot'] = CephString(o)
+    h['new_uuid'] = CephDict(o, CephInteger, 4, CephUUID, None)
+    h['new_xinfo'] = CephDict(o, CephInteger, 4, CephOSDXInfo, None)
+    h['new_hb_front_up'] = CephDict(o, CephInteger, 4, CephEntityAddr, None)
+    if v >= 2:
+        h['encode_features'] = CephInteger(o, 8)
+    else:
+        raise NotImplementedError()
+    if v >= 3:
+        h['new_nearfull_ratio'] = CephInteger(o, 4)
+        h['new_full_ratio'] = CephInteger(o, 4)
+    else:
+        h['new_nearfull_ratio'] = -1
+        h['new_full_ratio'] = -1
+    if v >= 4:
+        h['new_backfill_ratio'] = CephInteger(o, 4)
+    else:
+        h['new_backfill_ratio'] = -1
+    if v == 5:
+        h['new_require_min_compat_client'] = CephString(o)
+    if v >= 6:
+        h['new_require_min_compat_client'] = CephInteger(o, 1)
+        h['new_require_osd_release'] = CephInteger(o, 1)
+    # o.seek(h['osd_only_header'].end_offset)  # TODO
     assert(o.tell() == h['osd_only_header'].end_offset)
     h['inc_crc'] = CephInteger(o, 4)
     h['full_crc'] = CephInteger(o, 4)
