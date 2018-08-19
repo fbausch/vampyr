@@ -11,6 +11,7 @@ from vampyr.datatypes import CephDataType, CephBlockHeader, CephUUID,\
 from vampyr.exceptions import VampyrMagicException
 import logging
 import hashlib
+import time
 
 
 class BlueFS(object):
@@ -51,11 +52,16 @@ class BlueFS(object):
         oldextents = []
         assert(len(extents) > 0)
         logical_offset = 0
+
+        start = time.time()
         while len(extents) > 0:
             oldextents += extents
             logical_offset = self.read_bluefs_extents(extents, logical_offset)
             newextents = self.get_file(1).extents
             extents = [x for x in newextents if x not in oldextents]
+        stop = time.time()
+        logging.info("Parsed %d txs from transaction log in %d seconds." %
+                     (len(self.transactions), stop - start))
         assert(self._validate_extent_location())
 
     def _validate_extent_location(self):

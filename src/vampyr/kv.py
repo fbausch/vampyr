@@ -16,6 +16,7 @@ import logging
 import re
 import hashlib
 import sys
+import time
 # import functools
 # print = functools.partial(print, flush=True)
 
@@ -58,10 +59,16 @@ class RDBKV(object):
         # We pop the datasets because we don't need it anymore after parsing
         if not datasets:
             return
+        start = time.time()
+        count = 0
         for d in sorted(datasets.keys()):
             k = ByteHandler(d)
             v = ByteHandler(datasets[d][0])
             phandler.parse_dataset(k, v)
+            count += 1
+        stop = time.time()
+        logging.info("Parsed %d datasets with prefix %s in %d seconds." %
+                     (count, phandler.prefix, stop - start))
 
     @property
     def datasets(self):
@@ -83,6 +90,7 @@ class RDBKV(object):
         command = [RDBKV.ldb, 'idump', '--db=%s' % self.wdir,
                    '--hex']
 
+        start = time.time()
         logging.info("Running command: %s" % " ".join(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE)
@@ -95,6 +103,7 @@ class RDBKV(object):
             return self._datasets
         regex = "^'([0-9A-F]+)' seq:([0-9]+), type:([0-9]+) => ([0-9A-F]*)$"
         regex = re.compile(regex)
+        count = 0
         for line in o.decode('utf-8').split('\n'):
             m = re.search(regex, line)
             if not m:
@@ -111,6 +120,10 @@ class RDBKV(object):
                 continue
             else:
                 self._datasets[prefix][k] = (v, seq, t)
+                count += 1
+        stop = time.time()
+        logging.info("Loaded %d datasets using ldb in %d seconds." %
+                     (count, (stop - start)))
         return self._datasets
 
     @property
@@ -219,6 +232,9 @@ class GenericPrefixHandler(object):
     Abstract class for prefix handlers.
     """
 
+    def __init__(self, prefix):
+        self.prefix = prefix
+
     def parse_dataset(self, k, v):
         """
         Parse a dataset.
@@ -236,10 +252,10 @@ class PrefixHandlerO(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('O')
         self.onode_map = {}
         self.poolids = []
         self.oid_map = {}
-        self.prefix = 'O'
 
     def parse_dataset(self, k, v):
         """
@@ -516,8 +532,8 @@ class PrefixHandlerS(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('S')
         self.metadata_map = {}
-        self.prefix = 'S'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -556,8 +572,8 @@ class PrefixHandlerT(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('T')
         self.statfs_map = {}
-        self.prefix = 'T'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -588,8 +604,8 @@ class PrefixHandlerC(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('C')
         self.cnode_map = {}
-        self.prefix = 'C'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -627,10 +643,11 @@ class PrefixHandlerMP(GenericPrefixHandler):
     counter = 0
 
     def __init__(self, prefix):
+        assert(prefix in ['M', 'P'])
+        super().__init__(prefix)
         self.meta_map = {}
         self.header_map = {}
         self.inode_map = {}
-        self.prefix = prefix
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -811,8 +828,8 @@ class PrefixHandlerB(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('B')
         self.bnode_map = {}
-        self.prefix = 'B'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -840,8 +857,8 @@ class PrefixHandlerb(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('b')
         self.alloc_map = {}
-        self.prefix = 'b'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -916,8 +933,8 @@ class PrefixHandlerL(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('L')
         self.l_map = {}
-        self.prefix = 'L'
 
     def parse_dataset(self, k, v):
         k.seek(2)
@@ -938,8 +955,8 @@ class PrefixHandlerX(GenericPrefixHandler):
     counter = 0
 
     def __init__(self):
+        super().__init__('X')
         self.x_map = {}
-        self.prefix = 'X'
 
     def parse_dataset(self, k, v):
         k.seek(2)
