@@ -24,9 +24,11 @@ class BlueFS(object):
         """
         self.initialized = False
         self.allocated_areas = {}
+        self.deallocated_areas = {}
         self.allocated_ino = []
         self.deallocated_ino = []
         self.dirlist = []
+        self.removed_dirlist = []
         self.allocated_extents = []
         self.deallocated_extents = []
         self.ino_to_file_map = {}
@@ -45,6 +47,7 @@ class BlueFS(object):
         self.skipped_transactions = {}
 
         self.next_offset = 0
+        self.jump_seq = False
 
         self.blocksize = self.superblock.data['block_size'].value
 
@@ -86,7 +89,10 @@ class BlueFS(object):
             while block * self.blocksize < fnodesize:
                 try:
                     thisoff = offset + block * self.blocksize
-                    if self.next_offset > logical_offset:
+                    if self.jump_seq:
+                        self.jump_seq = False
+                        self.read_bluefs_transaction(thisoff, skip=True)
+                    elif self.next_offset > logical_offset:
                         self.read_bluefs_transaction(thisoff, skip=True)
                     else:
                         self.next_offset = 0
@@ -126,16 +132,25 @@ class BlueFS(object):
 
     def op_alloc_rm(self, id, offset, length):
         assert(self.initialized)
-        raise NotImplementedError()
+        assert(id in self.allocated_areas)
+        self.allocated_areas.remove(id)
+        self.deallocated_areas[id] = (offset, length)
 
     def op_dir_create(self, dirname):
         assert(self.initialized)
-        if dirname not in self.dirlist:
+        if dirname not in [x.dirname for x in self.dirlist]:
             self.dirlist.append(BlueFSDir(dirname))
 
     def op_dir_remove(self, dirname):
         assert(self.initialized)
-        raise NotImplementedError()
+        rmdir = None
+        for d in self.dirlist:
+            if d.dirname == dirname:
+                rmdir = d
+        if rmdir is None:
+            raise IndexError("directory %d cannot be removed" % rmdir)
+        self.dirlist.remove(rmdir)
+        self.removed_dirlist.append(rmdir)
 
     def op_dir_link(self, dirname, filename, ino):
         assert(self.initialized)
@@ -189,7 +204,8 @@ class BlueFS(object):
 
     def op_jump_seq(self):
         assert(self.initialized)
-        raise NotImplementedError()
+        self.jump_seq = True
+        logging.debug("Jump next transaction")
 
     def get_file(self, ino):
         return self.ino_to_file_map[ino]
@@ -291,6 +307,9 @@ class BlueFSDir(object):
         if ino in self.ino_to_file_map:
             rc = self.ino_to_file_map[ino]
         return rc
+
+    def __eq__(self, other):
+        return self.dirname == other.dirname
 
 
 class BlueFSFile(object):

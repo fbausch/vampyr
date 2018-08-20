@@ -1642,8 +1642,9 @@ class CephPGInfo(CephDataType):
         self.last_update = CephEversion(handle)
         self.last_complete = CephEversion(handle)
         self.log_tail = CephEversion(handle)
-        self.hobject_block_header = CephBlockHeader(handle)
-        handle.seek(self.hobject_block_header.end_offset)
+        self.hobject = CephHObject(handle)
+        # self.hobject_block_header = CephBlockHeader(handle)
+        # handle.seek(self.hobject_block_header.end_offset)
         # self.unknown = CephUnknown(handle, 0x20)
         handle.seek(self.header.end_offset)
         end = handle.tell()
@@ -1653,8 +1654,8 @@ class CephPGInfo(CephDataType):
     def __str__(self):
         # return "pgid: %s, unknown: %s" % \
         #     (self.pgid, self.unknown)
-        return "pgid: %s" % \
-            (self.pgid)
+        return "pgid: %s, last update: %s, last complete: %s, hobject: %s" % \
+            (self.pgid, self.last_update, self.last_complete, self.hobject)
 
 
 class CephPGFastinfo(CephDataType):
