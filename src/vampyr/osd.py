@@ -135,7 +135,7 @@ class OSD(object):
         if h['osdlength'].value < bytesize - self.offset:
             h['volume_slack'] = self.offset + h['osdlength'].value
         h['fstime'] = CephUTime(self)
-        h['main'] = CephString(self)
+        h['description'] = CephString(self)
         pos = self.tell()
         try:
             h['meta'] = CephStringDict(self)
@@ -167,7 +167,7 @@ class OSD(object):
               (data['osdlength'].value,
                data['osdlength'].value / (1024**3)))
         print("Last used at: %s" % str(data['fstime']))
-        # main
+        print("Description:  %s" % str(data['description']))
         print("Metadata information:")
         if 'meta' in data:
             for m, v in sorted(data['meta'].elements.items(),
