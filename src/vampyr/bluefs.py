@@ -77,10 +77,13 @@ class BlueFS(object):
                 if e.offset >= a[0] and e.offset + e.length <= a[0] + a[1]:
                     match = True
             if not match:
+                logging.error("Extent %e is not within BlueFS." % e)
                 return False
         return True
 
     def read_bluefs_extents(self, extents, logical_offset):
+        # Tries to decode transactions in the given transaction log extents
+        # logical_offset is the current offset in the transaction log.
         for e in extents:
             block = 0
             fnodesize = e.length
@@ -105,6 +108,10 @@ class BlueFS(object):
         return logical_offset
 
     def read_bluefs_transaction(self, seek, skip=False):
+        # Decodes a transaction and the contained operations of the
+        # transaction log.
+        # seek is the offset of the transaction on the OSD.
+        # skip indicates whether the transaction is to be ignored.
         h = {}
         handle = self.osd
         handle.seek(seek)
@@ -113,7 +120,13 @@ class BlueFS(object):
         h['uuid'] = CephUUID(handle)
         assert(h['uuid'] == self.superblock.data['uuid'])
         h['seq'] = CephInteger(handle, 8).value
-        h['transaction'] = BlueFSTransaction(handle, self)
+        if skip:
+            # We want to read the transaction, but don't want to apply the
+            # transaction to our own BlueFS state that we're recovering.
+            h['transaction'] = BlueFSTransaction(handle, None)
+        else:
+            # We want to read the transaction and apply it.
+            h['transaction'] = BlueFSTransaction(handle, self)
         h['crc'] = CephInteger(handle, 4)
         assert(handle.tell() == h['header'].end_offset)
         h['unknown'] = CephUnknown(handle, 0x10)
@@ -270,14 +283,18 @@ class BlueFS(object):
 
 
 class BlueFSDir(object):
+    # Represents a directory in BlueFS.
+
     def __init__(self, dirname):
         self.dirname = dirname
         self.ino_to_file_map = {}
 
     def link(self, filename, ino):
+        # Add a file to the directory.
         self.ino_to_file_map[ino] = filename
 
     def unlink(self, filename):
+        # Remove a file from the directory.
         rm = None
         for ino in self.ino_to_file_map.keys():
             if self.ino_to_file_map[ino] == filename:
@@ -289,11 +306,13 @@ class BlueFSDir(object):
         assert(filename not in self.ino_to_file_map.values())
 
     def list_files(self):
+        # Print all files in the directory with the inode.
         for ino, filename in self.ino_to_file_map.items():
             print("file %s/%s --> ino %d" %
                   (self.dirname, filename, ino))
 
     def mkdir(self, destination):
+        # Create this directory on a certain destination.
         assert(os.path.isdir(destination))
         destinationfull = os.path.join(destination, self.dirname)
         if os.path.isdir(destinationfull):
@@ -303,6 +322,8 @@ class BlueFSDir(object):
         assert(os.path.isdir(destinationfull))
 
     def get_file(self, ino):
+        # Get a file from the directory.
+        # Returns None, if not found.
         rc = None
         if ino in self.ino_to_file_map:
             rc = self.ino_to_file_map[ino]
@@ -313,6 +334,8 @@ class BlueFSDir(object):
 
 
 class BlueFSFile(object):
+    # Represents a file in BlueFS.
+
     def __init__(self, ino, size, mtime, extents):
         self.ino = ino
         self.size = size
@@ -320,6 +343,7 @@ class BlueFSFile(object):
         self.extents = extents
 
     def update(self, size, mtime, extents):
+        # Update the file metadata.
         self.size = size
         self.mtime = mtime
         self.extents = extents
@@ -330,12 +354,14 @@ class BlueFSFile(object):
                (self.ino, self.size, self.mtime, extents)
 
     def mkfile(self, filename, dirname, destination, osd):
+        # Extract the file content.
+        # Extracts also the slack and will compute the MD5 sum of the file.
         logging.info("Make file %s" % filename)
         destinationfull = os.path.join(destination, dirname)
         assert(os.path.isdir(destinationfull))
         filenamefull = os.path.join(destinationfull, filename)
-        filenameslack = os.path.join(destinationfull, "%s_slack" % filename)
-        filenamemd5 = os.path.join(destinationfull, "%s.md5" % filename)
+        filenameslack = os.path.join(destinationfull, "slack_%s" % filename)
+        filenamemd5 = os.path.join(destinationfull, "md5_%s" % filename)
         assert(not os.path.exists(filenamefull))
         logging.debug("create %s" % filenamefull)
         logging.debug("- size:  %d (0x%x)" % (self.size, self.size))
@@ -377,6 +403,8 @@ class BlueFSFile(object):
 
 
 class BlueFSSuperblock(object):
+    # Reads the BlueFS superblock at the fixed address 0x1000 of the OSD.
+
     def __init__(self, handle):
         h = {}
         handle.seek(0x1000)  # Superblock starts at 0x1000
@@ -397,6 +425,7 @@ class BlueFSSuperblock(object):
         self.superblock_slack = handle.read(slack_length)
 
     def pretty_print(self):
+        # Print nicely formatted information about the superblock.
         print("------------------------------")
         print("BlueFS Superblock Information:")
         print("------------------------------")
@@ -424,12 +453,14 @@ class BlueFSSuperblock(object):
         print("")
 
     def extract_slack(self, edir):
+        # Write the superblock slack to the file "slack_bfssuperblock".
         slackfile = os.path.join(edir, "slack_bfssuperblock")
         with open(slackfile, 'wb') as s:
             s.write(self.superblock_slack)
 
 
 class BlueFSFNode(CephDataType):
+    # fnode data structure of the transaction log and superblock.
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -451,6 +482,7 @@ class BlueFSFNode(CephDataType):
 
 
 class BlueFSExtent(CephDataType):
+    # Extent data structure of the transaction log.
     def __init__(self, handle):
         start = handle.tell()
         self.header = CephBlockHeader(handle)
@@ -470,6 +502,7 @@ class BlueFSExtent(CephDataType):
 
 
 class BlueFSTransaction(CephDataType):
+    # Decodes a transaction.
     def __init__(self, handle, bluefs):
         start = handle.tell()
         self.operations = []
@@ -487,6 +520,8 @@ class BlueFSTransaction(CephDataType):
 
 
 class BlueFSOperation(CephDataType):
+    # Decodes an operation in an transaction.
+
     def __init__(self, handle, bluefs):
         start = handle.tell()
         self.op = BlueFSOperationCode(handle)
@@ -496,7 +531,8 @@ class BlueFSOperation(CephDataType):
             self.hint = "none"
         elif op == 1:
             self.hint = "init"
-            bluefs.op_init()
+            if bluefs:
+                bluefs.op_init()
         elif op == 2 or op == 3:
             # ALLOC_ADD
             # ALLOC_RM
@@ -505,12 +541,13 @@ class BlueFSOperation(CephDataType):
             self.length = CephInteger(handle, 8).value
             self.hint = "id: 0x%x, offset: 0x%x, length: 0x%x" % \
                 (self.id, self.offset, self.length)
-            if op == 2:
-                bluefs.op_alloc_add(self.id, self.offset,
-                                    self.length)
-            else:
-                bluefs.op_alloc_rm(self.id, self.offset,
-                                   self.length)
+            if bluefs:
+                if op == 2:
+                    bluefs.op_alloc_add(self.id, self.offset,
+                                        self.length)
+                else:
+                    bluefs.op_alloc_rm(self.id, self.offset,
+                                       self.length)
         elif op == 4:
             # DIR_LINK
             self.dir = CephString(handle).value
@@ -518,46 +555,53 @@ class BlueFSOperation(CephDataType):
             self.ino = CephInteger(handle, 8).value
             self.hint = "dir: %s, file: %s, ino: %d" % \
                 (self.dir, self.file, self.ino)
-            bluefs.op_dir_link(self.dir, self.file, self.ino)
+            if bluefs:
+                bluefs.op_dir_link(self.dir, self.file, self.ino)
         elif op == 5:
             # DIR_UNLINK
             self.dir = CephString(handle).value
             self.file = CephString(handle).value
             self.hint = "dir: %s, file: %s" % \
                 (self.dir, self.file)
-            bluefs.op_dir_unlink(self.dir, self.file)
+            if bluefs:
+                bluefs.op_dir_unlink(self.dir, self.file)
         elif op == 6 or op == 7:
             # DIR_CREATE
             # DIR_REMOVE
             self.dir = CephString(handle).value
             self.hint = "dir: %s" % self.dir
-            if op == 6:
-                bluefs.op_dir_create(self.dir)
-            else:
-                bluefs.op_dir_remove(self.dir)
+            if bluefs:
+                if op == 6:
+                    bluefs.op_dir_create(self.dir)
+                else:
+                    bluefs.op_dir_remove(self.dir)
         elif op == 8:
             # FILE_UPDATE
             self.file = BlueFSFNode(handle)
             self.hint = str(self.file)
-            bluefs.op_file_update(self.file.ino, self.file.size,
-                                  self.file.mtime, self.file.extents)
+            if bluefs:
+                bluefs.op_file_update(self.file.ino, self.file.size,
+                                      self.file.mtime, self.file.extents)
         elif op == 9:
             # FILE_REMOVE
             self.ino = CephInteger(handle, 8).value
             self.hint = "ino: %d" % self.ino
-            bluefs.op_file_remove(self.ino)
+            if bluefs:
+                bluefs.op_file_remove(self.ino)
         elif op == 10:
             # JUMP
             self.next_seq = CephInteger(handle, 8).value
             self.offset = CephInteger(handle, 8).value
             self.hint = "next_seq: %d, offset: 0x%x" % \
                 (self.next_seq, self.offset)
-            bluefs.op_jump(self.next_seq, self.offset)
+            if bluefs:
+                bluefs.op_jump(self.next_seq, self.offset)
         elif op == 11:
             # JUMP_SEQ
             self.next_seq = CephInteger(handle, 8).value
             self.hint = "next_seq: %d" % self.next_seq
-            bluefs.op_jump_seq()
+            if bluefs:
+                bluefs.op_jump_seq()
 
         end = handle.tell()
         super().__init__(start, end)

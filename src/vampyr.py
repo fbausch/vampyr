@@ -190,6 +190,9 @@ def main():
     logging.basicConfig(format=logfrmt, level=loglvl)
 
     logging.debug(actions)
+
+    # Scan for osdmap, inc_osdmap and osd_superblock data structures.
+    # Does not load BlueFS and the KV store.
     if "scan" in actions:
         if clearextract and os.path.isdir(scandir):
             logging.info("Delete %s" % scandir)
@@ -260,6 +263,7 @@ def main():
 
         return
 
+    # All actions that require BlueFS and KV store.
     with OSD(osdpath, startoffset=offset) as osd:
         if "bslabel" in actions:
             osd.bslabel_pretty_print()
